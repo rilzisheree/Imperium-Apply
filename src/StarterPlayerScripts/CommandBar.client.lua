@@ -510,8 +510,8 @@ blocker.Visible                = false
 blocker.Parent                 = gui
 
 -- ─── Stacking notification system ───────────────────────────────────────────────
--- Each call to showNotification() spawns its own card that slides in from the right.
--- Cards stack upward from the bottom-right corner and reflow smoothly when one dismisses.
+-- Each showNotification() call spawns a card that slides in from the right.
+-- Cards stack upward from the bottom-right corner. When one leaves, the rest reflow.
 
 local notifGui = Instance.new("ScreenGui")
 notifGui.Name           = "CmdNotification"
@@ -520,27 +520,34 @@ notifGui.ResetOnSpawn   = false
 notifGui.IgnoreGuiInset = true
 notifGui.Parent         = PlayerGui
 
-local NOTIF_GAP  = 8   -- vertical gap between stacked cards
-local MAX_NOTIFS = 5   -- oldest card is removed if the stack exceeds this
+local NOTIF_GAP  = 8
+local MAX_NOTIFS = 5
 
--- Stack: index 1 = bottom (newest), index n = top (oldest)
-local notifStack = {}
+-- notifFrames[1] = bottom-most (newest), notifFrames[n] = top-most (oldest)
+local notifFrames: { Frame } = {}
 
-local function notifSlotY(slot: number): number
-        -- slot 1 = -MARGIN (bottom), slot 2 = one step up, etc.
-        return -(CFG.NOTIF_MARGIN + (slot - 1) * (CFG.NOTIF_HEIGHT + NOTIF_GAP))
+local function slotY(i: number): number
+        -- i=1 → flush to bottom margin; each higher slot steps up by HEIGHT+GAP
+        return -(CFG.NOTIF_MARGIN + (i - 1) * (CFG.NOTIF_HEIGHT + NOTIF_GAP))
 end
 
-local function repositionStack()
-        for i, entry in notifStack do
-                local y = notifSlotY(i)
-                tw(entry.frame, CFG.NOTIF_SLIDE,
-                        { Position = UDim2.new(1, -CFG.NOTIF_MARGIN, 1, y) },
+local function reflowFrames()
+        for i, f in ipairs(notifFrames) do
+                tw(f, CFG.NOTIF_SLIDE,
+                        { Position = UDim2.new(1, -CFG.NOTIF_MARGIN, 1, slotY(i)) },
                         Enum.EasingStyle.Quint)
         end
 end
 
-local function buildNotifCard(message: string): Frame
+local function showNotification(message: string)
+        -- Evict oldest when at capacity
+        if #notifFrames >= MAX_NOTIFS then
+                local oldest = notifFrames[#notifFrames]
+                table.remove(notifFrames, #notifFrames)
+                oldest:Destroy()
+        end
+
+        -- Build card — parent LAST so position is set before first render
         local f = Instance.new("Frame")
         f.Name                   = "Notif"
         f.AnchorPoint            = Vector2.new(1, 1)
@@ -549,7 +556,8 @@ local function buildNotifCard(message: string): Frame
         f.BackgroundTransparency = 0.08
         f.BorderSizePixel        = 0
         f.ZIndex                 = 20
-        f.Parent                 = notifGui
+        -- Start off-screen right at slot-1 height so there's no positional jump
+        f.Position               = UDim2.new(1, CFG.NOTIF_WIDTH + CFG.NOTIF_MARGIN, 1, slotY(1))
 
         local corner = Instance.new("UICorner")
         corner.CornerRadius = UDim.new(0, 10)
@@ -589,57 +597,40 @@ local function buildNotifCard(message: string): Frame
         lbl.ZIndex                 = 21
         lbl.Parent                 = f
 
-        return f
-end
+        -- Parent card now — position is already set off-screen so no flash
+        f.Parent = notifGui
 
-local function dismissEntry(entry)
-        local idx = table.find(notifStack, entry)
-        if not idx then return end
-
-        local exitY = notifSlotY(idx)
-        tw(entry.frame, CFG.NOTIF_SLIDE,
-                { Position = UDim2.new(1, CFG.NOTIF_WIDTH + CFG.NOTIF_MARGIN, 1, exitY) },
-                Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-
-        table.remove(notifStack, idx)
-
-        task.delay(CFG.NOTIF_SLIDE + 0.05, function()
-                entry.frame:Destroy()
-                -- Reflow the remaining cards
-                repositionStack()
-        end)
-end
-
-local function showNotification(message: string)
-        -- Cap stack — evict the oldest (top) card immediately
-        if #notifStack >= MAX_NOTIFS then
-                dismissEntry(notifStack[#notifStack])
-        end
-
-        local card  = buildNotifCard(message)
-        local entry = { frame = card }
-
-        -- New card always enters at slot 1 (bottom).
-        -- Slide all existing cards up one slot first.
-        for i, e in notifStack do
-                local y = notifSlotY(i + 1)
-                tw(e.frame, CFG.NOTIF_SLIDE,
-                        { Position = UDim2.new(1, -CFG.NOTIF_MARGIN, 1, y) },
+        -- Push existing cards up one slot
+        for i, existing in ipairs(notifFrames) do
+                tw(existing, CFG.NOTIF_SLIDE,
+                        { Position = UDim2.new(1, -CFG.NOTIF_MARGIN, 1, slotY(i + 1)) },
                         Enum.EasingStyle.Quint)
         end
 
-        -- Insert new entry at the bottom of the stack
-        table.insert(notifStack, 1, entry)
+        -- New card is bottom (index 1)
+        table.insert(notifFrames, 1, f)
 
-        -- Slide new card in from off-screen right
-        local targetY = notifSlotY(1)
-        card.Position = UDim2.new(1, CFG.NOTIF_WIDTH + CFG.NOTIF_MARGIN, 1, targetY)
-        tw(card, CFG.NOTIF_SLIDE, { Position = UDim2.new(1, -CFG.NOTIF_MARGIN, 1, targetY) },
+        -- Slide new card in from the right
+        tw(f, CFG.NOTIF_SLIDE,
+                { Position = UDim2.new(1, -CFG.NOTIF_MARGIN, 1, slotY(1)) },
                 Enum.EasingStyle.Quint)
 
-        -- Auto-dismiss after duration
+        -- Auto-dismiss
         task.delay(CFG.NOTIF_DURATION, function()
-                dismissEntry(entry)
+                local idx = table.find(notifFrames, f)
+                if not idx then return end  -- already evicted
+
+                -- Slide the card off to the right from its current slot
+                tw(f, CFG.NOTIF_SLIDE,
+                        { Position = UDim2.new(1, CFG.NOTIF_WIDTH + CFG.NOTIF_MARGIN, 1, slotY(idx)) },
+                        Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+
+                table.remove(notifFrames, idx)
+
+                task.delay(CFG.NOTIF_SLIDE + 0.05, function()
+                        f:Destroy()
+                        reflowFrames()  -- close the gap left by the dismissed card
+                end)
         end)
 end
 
