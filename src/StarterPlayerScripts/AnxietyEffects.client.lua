@@ -43,7 +43,7 @@ local LEVEL = {
                 heartbeat     = 0.25,
         },
         [2] = {
-                duration      = 2,
+                duration      = 2.8,
                 vigTarget     = 0.72,
                 tint          = Color3.new(1, 0.88, 0.88),
                 blur          = 4,
@@ -55,7 +55,7 @@ local LEVEL = {
                 heartbeat     = 0.45,
         },
         [3] = {
-                duration      = 2.5,
+                duration      = 3.5,
                 vigTarget     = 0.62,
                 tint          = Color3.new(1, 0.80, 0.80),
                 blur          = 9,
@@ -67,7 +67,7 @@ local LEVEL = {
                 heartbeat     = 0.60,
         },
         [4] = {
-                duration      = 3.5,
+                duration      = 4,
                 vigTarget     = 0.50,
                 tint          = Color3.new(1, 0.70, 0.70),
                 blur          = 15,
@@ -79,7 +79,7 @@ local LEVEL = {
                 heartbeat     = 0.75,
         },
         [5] = {
-                duration      = 5,
+                duration      = 6,
                 vigTarget     = 0.38,
                 tint          = Color3.new(1, 0.60, 0.60),
                 blur          = 22,
