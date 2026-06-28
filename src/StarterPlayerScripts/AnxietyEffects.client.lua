@@ -31,7 +31,7 @@ local rng       = Random.new()
 
 local LEVEL = {
         [1] = {
-                duration      = 15,
+                duration      = 1.5,
                 vigTarget     = 0.82,
                 tint          = Color3.new(1, 0.94, 0.94),
                 blur          = 0,
@@ -43,7 +43,7 @@ local LEVEL = {
                 heartbeat     = 0.25,
         },
         [2] = {
-                duration      = 25,
+                duration      = 2,
                 vigTarget     = 0.72,
                 tint          = Color3.new(1, 0.88, 0.88),
                 blur          = 4,
@@ -55,7 +55,7 @@ local LEVEL = {
                 heartbeat     = 0.45,
         },
         [3] = {
-                duration      = 40,
+                duration      = 2.5,
                 vigTarget     = 0.62,
                 tint          = Color3.new(1, 0.80, 0.80),
                 blur          = 9,
@@ -67,7 +67,7 @@ local LEVEL = {
                 heartbeat     = 0.60,
         },
         [4] = {
-                duration      = 60,
+                duration      = 3.5,
                 vigTarget     = 0.50,
                 tint          = Color3.new(1, 0.70, 0.70),
                 blur          = 15,
@@ -79,7 +79,7 @@ local LEVEL = {
                 heartbeat     = 0.75,
         },
         [5] = {
-                duration      = 90,
+                duration      = 5,
                 vigTarget     = 0.38,
                 tint          = Color3.new(1, 0.60, 0.60),
                 blur          = 22,
@@ -220,7 +220,7 @@ local function runAnxiety(level: number)
 
         -- ── Fade IN ─────────────────────────────────────────────────────────
 
-        local FADE_IN = 2.5
+        local FADE_IN = math.min(0.3, cfg.duration * 0.2)
 
         for _, f in vigFrames do
                 tw(f, FADE_IN, { BackgroundTransparency = cfg.vigTarget })
@@ -307,7 +307,7 @@ local function runAnxiety(level: number)
 
         local messagesActive = true
         task.spawn(function()
-                task.wait(1.8)
+                task.wait(math.min(0.2, cfg.duration * 0.1))
                 while messagesActive and msgIndex < totalMessages do
                         msgIndex += 1
                         local text  = pool[(msgIndex - 1) % #pool + 1]
@@ -350,7 +350,7 @@ local function runAnxiety(level: number)
         -- ── Fade OUT and cleanup ─────────────────────────────────────────────
 
         task.delay(cfg.duration, function()
-                local FADE_OUT = 3.0
+                local FADE_OUT = math.min(0.5, cfg.duration * 0.25)
 
                 shakeActive     = false
                 heartbeatActive = false
