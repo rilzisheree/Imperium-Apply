@@ -1012,13 +1012,11 @@ if not ok_cas then
         warn("[CommandBar] CAS binding failed:", err_cas)
 end
 
--- UIS fallback — fires if CAS didn't sink the input (or CAS failed to bind)
+-- UIS handles in-bar keys (Escape, Enter, history, Tab, etc.)
+-- The OPEN_KEY toggle is handled exclusively by CAS above to avoid double-firing:
+-- UserInputService.InputBegan fires regardless of CAS sinking, so both would call
+-- handleToggle() — opening then immediately closing the bar.
 UserInputService.InputBegan:Connect(function(input)
-        if input.KeyCode == CFG.OPEN_KEY then
-                handleToggle()
-                return
-        end
-
         if not isOpen then return end
 
         if input.KeyCode == Enum.KeyCode.Escape then
