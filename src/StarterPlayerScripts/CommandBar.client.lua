@@ -525,9 +525,9 @@ local NOTIF_GAP  = 8
 local MAX_NOTIFS = 5
 
 -- notifFrames[1] = bottom-most (newest), notifFrames[n] = top-most (oldest)
-local notifFrames: { Frame } = {}
+local notifFrames = {}
 
-local function slotY(i: number): number
+local function slotY(i)
         -- i=1 → flush to bottom margin; each higher slot steps up by HEIGHT+GAP
         return -(CFG.NOTIF_MARGIN + (i - 1) * (CFG.NOTIF_HEIGHT + NOTIF_GAP))
 end
@@ -540,7 +540,7 @@ local function reflowFrames()
         end
 end
 
-local function showNotification(message: string)
+local function showNotification(message)
         -- Evict oldest when at capacity
         if #notifFrames >= MAX_NOTIFS then
                 local oldest = notifFrames[#notifFrames]
@@ -873,25 +873,22 @@ local function openBar()
         historyIndex = 0
         savedDraft   = ""
 
-        panel.Visible   = true
-        blocker.Visible = true
+        -- Show panel immediately — fully opaque from the start so it's never invisible
+        panel.BackgroundTransparency = CFG.BG_TRANS_OPEN
+        panel.Position               = UDim2.new(0.5, 0, 0, CFG.BAR_Y_CLOSED)
+        panel.Visible                = true
+        blocker.Visible              = true
+        panelStroke.Transparency     = 0.1
+        accentLine.BackgroundTransparency = 0.2
+        promptLabel.TextTransparency = 0
+        inputBox.TextTransparency    = 0
 
-        panel.Position              = UDim2.new(0.5, 0, 0, CFG.BAR_Y_CLOSED)
-        panel.BackgroundTransparency = 1
-
+        -- Animate slide down into open position
         TweenService:Create(panel, openTInfo, {
-                Position             = UDim2.new(0.5, 0, 0, CFG.BAR_Y_OPEN),
-                BackgroundTransparency = CFG.BG_TRANS_OPEN,
+                Position = UDim2.new(0.5, 0, 0, CFG.BAR_Y_OPEN),
         }):Play()
 
-        tw(panelStroke, CFG.ANIM_TIME, { Transparency = 0.1 })
-        tw(accentLine,  CFG.ANIM_TIME, { BackgroundTransparency = 0.2 })
-        tw(promptLabel, CFG.ANIM_TIME, { TextTransparency = 0 })
-        tw(inputBox,    CFG.ANIM_TIME, { TextTransparency = 0 })
-
-        task.delay(CFG.ANIM_TIME * 0.5, function()
-                if isOpen then inputBox:CaptureFocus() end
-        end)
+        inputBox:CaptureFocus()
 end
 
 local function closeBar()
@@ -989,28 +986,38 @@ blocker.MouseButton1Click:Connect(function()
         closeBar()
 end)
 
--- High-priority binding so ; is captured before chat, TextBoxes, or anything else.
--- Sinking the input also prevents the semicolon from being typed into the input box.
-ContextActionService:BindActionAtPriority(
-        "ToggleCommandBar",
-        function(_, inputState)
-                if inputState ~= Enum.UserInputState.Begin then
-                        return Enum.ContextActionResult.Pass
-                end
-                if isOpen then
-                        closeBar()
-                else
-                        openBar()
-                end
-                return Enum.ContextActionResult.Sink
-        end,
-        false,   -- no on-screen touch button
-        Enum.ContextActionPriority.High.Value,
-        CFG.OPEN_KEY
-)
+-- Dual binding: CAS fires before chat/textboxes and sinks the key.
+-- UIS is a fallback in case CAS has an issue in this Studio version.
+-- Both have the same guard (isOpen), so double-firing is a safe no-op.
+local function handleToggle()
+        if isOpen then closeBar() else openBar() end
+end
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        -- (toggle is handled by ContextActionService above)
+local ok_cas, err_cas = pcall(function()
+        ContextActionService:BindActionAtPriority(
+                "ToggleCommandBar",
+                function(_, inputState)
+                        if inputState ~= Enum.UserInputState.Begin then
+                                return Enum.ContextActionResult.Pass
+                        end
+                        handleToggle()
+                        return Enum.ContextActionResult.Sink
+                end,
+                false,
+                3000,  -- High priority (raw value, avoids enum lookup issues)
+                CFG.OPEN_KEY
+        )
+end)
+if not ok_cas then
+        warn("[CommandBar] CAS binding failed:", err_cas)
+end
+
+-- UIS fallback — fires if CAS didn't sink the input (or CAS failed to bind)
+UserInputService.InputBegan:Connect(function(input)
+        if input.KeyCode == CFG.OPEN_KEY then
+                handleToggle()
+                return
+        end
 
         if not isOpen then return end
 
@@ -1102,12 +1109,15 @@ end)
 
 -- ─── Server feedback toasts ────────────────────────────────────────────────────
 -- Show success/failure messages returned by the server as right-side notifications.
+-- Guarded: if the remote timed out (server not running), skip gracefully.
 
-CommandRemotes.CommandFeedback.OnClientEvent:Connect(function(success: boolean, msg: string)
-        -- Success is handled immediately in executeCommand — only surface server errors here.
-        if not success and typeof(msg) == "string" then
-                showNotification("✗  " .. msg)
-        end
-end)
+if CommandRemotes.CommandFeedback then
+        CommandRemotes.CommandFeedback.OnClientEvent:Connect(function(success, msg)
+                -- Success is handled immediately in executeCommand — only surface server errors here.
+                if not success and typeof(msg) == "string" then
+                        showNotification("✗  " .. msg)
+                end
+        end)
+end
 
 print("[CommandBar] Staff command bar active. Press ; to open.")
