@@ -21,10 +21,6 @@ local function tw(target, time, props, style, dir)
         TweenService:Create(target, TweenInfo.new(time, style, dir), props):Play()
 end
 
--- ─── Font faces ───────────────────────────────────────────────────────────────
-
-local FONT_SERIF      = Font.fromEnum(Enum.Font.TimesNewRoman)
-local FONT_SERIF_ITAL = Font.new("rbxasset://fonts/families/TimesNewRoman.json", Enum.FontWeight.Regular, Enum.FontStyle.Italic)
 
 -- ─── Root ScreenGui ───────────────────────────────────────────────────────────
 
@@ -95,7 +91,7 @@ smHeader.BackgroundTransparency = 1
 smHeader.TextColor3             = Color3.fromRGB(255, 255, 255)
 smHeader.TextTransparency       = 1
 smHeader.TextSize               = 36
-smHeader.FontFace               = FONT_SERIF_ITAL
+smHeader.Font                   = Enum.Font.TimesNewRoman
 smHeader.Text                   = "[ Server Message ]"
 smHeader.TextXAlignment         = Enum.TextXAlignment.Center
 smHeader.TextYAlignment         = Enum.TextYAlignment.Center
@@ -112,7 +108,7 @@ smBody.BackgroundTransparency = 1
 smBody.TextColor3             = Color3.fromRGB(255, 255, 255)
 smBody.TextTransparency       = 1
 smBody.TextSize               = 28
-smBody.FontFace               = FONT_SERIF
+smBody.Font                   = Enum.Font.TimesNewRoman
 smBody.Text                   = ""
 smBody.TextWrapped            = true
 smBody.TextScaled             = false
@@ -133,7 +129,7 @@ imLabel.BackgroundTransparency = 1
 imLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
 imLabel.TextTransparency       = 1
 imLabel.TextSize               = 27
-imLabel.FontFace               = FONT_SERIF
+imLabel.Font                   = Enum.Font.TimesNewRoman
 imLabel.Text                   = ""
 imLabel.TextWrapped            = true
 imLabel.TextXAlignment         = Enum.TextXAlignment.Center
