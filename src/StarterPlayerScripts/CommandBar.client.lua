@@ -27,7 +27,6 @@ local Players               = game:GetService("Players")
 local ReplicatedStorage     = game:GetService("ReplicatedStorage")
 local UserInputService      = game:GetService("UserInputService")
 local TweenService          = game:GetService("TweenService")
-local ContextActionService  = game:GetService("ContextActionService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
@@ -986,58 +985,40 @@ blocker.MouseButton1Click:Connect(function()
         closeBar()
 end)
 
--- handleToggle is called by both CAS and UIS. In Roblox, UIS.InputBegan fires for
--- ALL inputs even when CAS sinks them, so without a debounce pressing ; would call
--- handleToggle() twice: open then immediately close. The debounce drops any second
--- call that arrives within 100 ms of the first.
-local lastToggleTick = 0
+-- ─── Single, simple input handler ─────────────────────────────────────────────
+--
+-- No ContextActionService: BindActionAtPriority is unreliable across Studio
+-- versions and causes silent double-fire issues. UIS alone is sufficient.
+--
+-- Open key (; by default):
+--   • gameProcessed = false  → bar is closed, nothing is focused → open
+--   • gameProcessed = true   → a TextBox has focus (chat etc.) → ignore,
+--                              don't steal focus away from what the player is typing
+--   • bar is already open    → the command TextBox is focused so gameProcessed
+--                              is true; use Escape or click-outside to close
+--
+-- All other keys only fire when the bar is open.
 
-local function handleToggle()
-        local now = tick()
-        if now - lastToggleTick < 0.1 then return end
-        lastToggleTick = now
-        if isOpen then closeBar() else openBar() end
-end
-
--- CAS: high-priority binding that sinks the key so it doesn't get typed elsewhere.
-local ok_cas, err_cas = pcall(function()
-        ContextActionService:BindActionAtPriority(
-                "ToggleCommandBar",
-                function(_, inputState)
-                        if inputState ~= Enum.UserInputState.Begin then
-                                return Enum.ContextActionResult.Pass
-                        end
-                        handleToggle()
-                        return Enum.ContextActionResult.Sink
-                end,
-                false,
-                2000,  -- Enum.ContextActionPriority.High.Value
-                CFG.OPEN_KEY
-        )
-end)
-if not ok_cas then
-        warn("[CommandBar] CAS binding failed:", err_cas)
-end
-
--- UIS: fires regardless of CAS sinking — acts as a reliable fallback and also
--- handles all in-bar keys (Escape, Enter, history, Tab, etc.).
--- The debounce in handleToggle prevents a double-toggle when both fire.
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
+
+        -- ── Toggle open ──────────────────────────────────────────────────────────
         if input.KeyCode == CFG.OPEN_KEY then
-                -- Only open from game context (not while typing in another TextBox)
-                if not gameProcessed then
-                        handleToggle()
+                if not gameProcessed and not isOpen then
+                        openBar()
                 end
                 return
         end
 
+        -- ── Everything below only matters while the bar is open ──────────────────
         if not isOpen then return end
 
+        -- Escape always closes, even while the TextBox is focused
         if input.KeyCode == Enum.KeyCode.Escape then
                 closeBar()
                 return
         end
 
+        -- Keys that require the command TextBox to be focused
         if not inputFocused then return end
 
         if input.KeyCode == Enum.KeyCode.Return then
@@ -1045,12 +1026,11 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
                 return
         end
 
-        -- Up/Down: navigate player suggestions when the panel is open, else scroll history
+        -- Up/Down: navigate player suggestions when panel is open, else scroll history
         if input.KeyCode == Enum.KeyCode.Up then
                 if playerSuggestPanel.Visible and #filteredPlayers > 0 then
                         local count = math.min(#filteredPlayers, CFG.PS_MAX_ENTRIES)
-                        local next  = ((playerSuggestIndex - 2) % count) + 1
-                        highlightPsRow(next)
+                        highlightPsRow(((playerSuggestIndex - 2) % count) + 1)
                 else
                         if historyIndex == 0 then savedDraft = inputBox.Text end
                         historyIndex = math.min(historyIndex + 1, #history)
@@ -1065,8 +1045,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if input.KeyCode == Enum.KeyCode.Down then
                 if playerSuggestPanel.Visible and #filteredPlayers > 0 then
                         local count = math.min(#filteredPlayers, CFG.PS_MAX_ENTRIES)
-                        local next  = (playerSuggestIndex % count) + 1
-                        highlightPsRow(next)
+                        highlightPsRow((playerSuggestIndex % count) + 1)
                 else
                         if historyIndex > 0 then
                                 historyIndex -= 1
@@ -1082,10 +1061,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
                 if playerSuggestPanel.Visible and #filteredPlayers > 0 then
                         local chosen = filteredPlayers[playerSuggestIndex] or filteredPlayers[1]
                         if chosen then
-                                local name = chosen:gsub(" %(me%)$", "")
-                                local cur = inputBox.Text
-                                -- Strip the partial last word: keep everything up to and including the last space
-                                local prefix = cur:match("^(.*%s)") or ""
+                                local name   = chosen:gsub(" %(me%)$", "")
+                                local prefix = inputBox.Text:match("^(.*%s)") or ""
                                 inputBox.Text = prefix .. name .. " "
                                 task.defer(function() inputBox.CursorPosition = #inputBox.Text + 1 end)
                         end
@@ -1099,9 +1076,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
                 return
         end
 
-        -- Cycle dropdown Ctrl+N / Ctrl+P
-        if input.KeyCode == Enum.KeyCode.N
-                and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+        -- Ctrl+N / Ctrl+P: cycle autocomplete dropdown
+        if input.KeyCode == Enum.KeyCode.N and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
                 if #acMatches > 0 then
                         acIndex = (acIndex % #acMatches) + 1
                         refreshDropdown()
@@ -1109,8 +1085,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
                 return
         end
 
-        if input.KeyCode == Enum.KeyCode.P
-                and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+        if input.KeyCode == Enum.KeyCode.P and UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
                 if #acMatches > 0 then
                         acIndex = ((acIndex - 2) % #acMatches) + 1
                         refreshDropdown()
