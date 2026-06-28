@@ -13,6 +13,16 @@
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Chat              = game:GetService("Chat")
+local TextChatService   = game:GetService("TextChatService")
+
+-- Kill Roblox's default chat and bubble chat entirely
+pcall(function()
+        TextChatService.ChatVersion = Enum.ChatVersion.LegacyChatService
+end)
+pcall(function()
+        local bcc = TextChatService:FindFirstChildOfClass("BubbleChatConfiguration")
+        if bcc then bcc.Enabled = false end
+end)
 
 local ChatRemotes = require(ReplicatedStorage:WaitForChild("ChatRemotes"))
 
