@@ -75,7 +75,7 @@ smBody.Parent                 = gui
 local imLabel = Instance.new("TextLabel")
 imLabel.Name                   = "IMLabel"
 imLabel.AnchorPoint            = Vector2.new(0.5, 0.5)
-imLabel.Position               = UDim2.new(0.5, 0, 0.64, 0)
+imLabel.Position               = UDim2.new(0.5, 0, 0.66, 0)
 imLabel.Size                   = UDim2.new(0.50, 0, 0, 100)
 imLabel.BackgroundTransparency = 1
 imLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
@@ -100,13 +100,19 @@ end
 -- ─── SM ───────────────────────────────────────────────────────────────────────
 
 local function showSM(text: string)
-        smBody.Text      = text
-        smHeader.Visible = true
-        smBody.Visible   = true
-        blur.Size        = 5
+        smBody.Text               = text
+        smHeader.TextTransparency = 1
+        smBody.TextTransparency   = 1
+        smHeader.Visible          = true
+        smBody.Visible            = true
+        blur.Size                 = 0
 
-        task.delay(calcHold(text), function()
-                tw(blur, 0.5, { Size = 0 })
+        tw(blur,     0.6, { Size = 5 })
+        tw(smHeader, 0.6, { TextTransparency = 0 })
+        tw(smBody,   0.6, { TextTransparency = 0 })
+
+        task.delay(0.6 + calcHold(text), function()
+                tw(blur,     0.5, { Size = 0 })
                 tw(smHeader, 0.5, { TextTransparency = 1 })
                 tw(smBody,   0.5, { TextTransparency = 1 })
                 task.delay(0.55, function()
@@ -122,10 +128,13 @@ end
 -- ─── IM ───────────────────────────────────────────────────────────────────────
 
 local function showIM(text: string)
-        imLabel.Text    = text
-        imLabel.Visible = true
+        imLabel.Text             = text
+        imLabel.TextTransparency = 1
+        imLabel.Visible          = true
 
-        task.delay(calcHold(text), function()
+        tw(imLabel, 0.6, { TextTransparency = 0 })
+
+        task.delay(0.6 + calcHold(text), function()
                 tw(imLabel, 0.5, { TextTransparency = 1 })
                 task.delay(0.55, function()
                         imLabel.Visible          = false
