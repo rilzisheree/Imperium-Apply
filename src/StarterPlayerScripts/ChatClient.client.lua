@@ -17,7 +17,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterGui        = game:GetService("StarterGui")
 local UserInputService  = game:GetService("UserInputService")
 local TweenService      = game:GetService("TweenService")
-local TextService       = game:GetService("TextService")
 local RunService        = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
@@ -243,23 +242,12 @@ local function createBubble(character: Model, text: string)
         container.order += 1
         local myOrder = container.order
 
-        -- ── Measure text so the pill is exactly as wide as the content ────────────
-        local measured = TextService:GetTextSize(
-                text,
-                CFG.BUBBLE_TEXT_SIZE,
-                CFG.BUBBLE_FONT,
-                Vector2.new(CFG.BUBBLE_MAX_WIDTH, 1000)
-        )
-        local labelW  = math.min(measured.X, CFG.BUBBLE_MAX_WIDTH)
-        local labelH  = measured.Y
-        local bubbleW = labelW + CFG.BUBBLE_PADDING_H * 2
-        local bubbleH = labelH + CFG.BUBBLE_PADDING_V * 2
-
         -- ── Bubble pill ───────────────────────────────────────────────────────────
         local bubble = Instance.new("Frame")
         bubble.Name                   = "Bubble"
         bubble.LayoutOrder            = myOrder
-        bubble.Size                   = UDim2.new(0, bubbleW, 0, bubbleH)
+        bubble.Size                   = UDim2.new(0, CFG.BUBBLE_MAX_WIDTH, 0, 0)
+        bubble.AutomaticSize          = Enum.AutomaticSize.Y
         bubble.BackgroundColor3       = CFG.BUBBLE_BG_COLOR
         bubble.BackgroundTransparency = 1
         bubble.BorderSizePixel        = 0
@@ -279,7 +267,8 @@ local function createBubble(character: Model, text: string)
         local label = Instance.new("TextLabel")
         label.Name                   = "ChatText"
         label.BackgroundTransparency = 1
-        label.Size                   = UDim2.new(0, labelW, 0, labelH)
+        label.Size                   = UDim2.new(1, 0, 0, 0)
+        label.AutomaticSize          = Enum.AutomaticSize.Y
         label.Font                   = CFG.BUBBLE_FONT
         label.TextSize               = CFG.BUBBLE_TEXT_SIZE
         label.TextColor3             = CFG.BUBBLE_TEXT_COLOR
