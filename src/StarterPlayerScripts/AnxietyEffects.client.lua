@@ -124,7 +124,7 @@ local MESSAGES = {
 -- ─── Helpers ──────────────────────────────────────────────────────────────────
 
 local function tw(obj, t, props, style, dir)
-        style = style or Enum.EasingStyle.Quad
+        style = style or Enum.EasingStyle.Expo
         dir   = dir   or Enum.EasingDirection.Out
         TweenService:Create(obj, TweenInfo.new(t, style, dir), props):Play()
 end
@@ -220,7 +220,7 @@ local function runAnxiety(level: number)
 
         -- ── Fade IN ─────────────────────────────────────────────────────────
 
-        local FADE_IN = math.min(0.3, cfg.duration * 0.2)
+        local FADE_IN = math.min(0.45, cfg.duration * 0.22)
 
         for _, f in vigFrames do
                 tw(f, FADE_IN, { BackgroundTransparency = cfg.vigTarget })
@@ -230,12 +230,13 @@ local function runAnxiety(level: number)
                 tw(blurEffect, FADE_IN, { Size = cfg.blur })
         end
 
-        -- ── Camera shake (RenderStepped — applies after Roblox camera update) ─
+        -- ── Camera shake — amplitude smoothly ramps down on cleanup ─────────
 
+        local shakeAmplitude = cfg.shakeAmp
         local shakeActive    = true
-        local shakeConn = RunService.RenderStepped:Connect(function()
+        local shakeConn = RunService.RenderStepped:Connect(function(dt)
                 if not shakeActive then return end
-                local amp = cfg.shakeAmp
+                local amp = shakeAmplitude
                 local rx  = (rng:NextNumber() * 2 - 1) * amp
                 local ry  = (rng:NextNumber() * 2 - 1) * amp * 0.6
                 Camera.CFrame = Camera.CFrame * CFrame.Angles(rx, ry, 0)
@@ -251,16 +252,16 @@ local function runAnxiety(level: number)
                         local darkTarget = math.max(0, cfg.vigTarget - intensity * 0.14)
 
                         -- First beat
-                        for _, f in vigFrames do tw(f, 0.07, { BackgroundTransparency = darkTarget }) end
+                        for _, f in vigFrames do tw(f, 0.07, { BackgroundTransparency = darkTarget }, Enum.EasingStyle.Quad) end
                         task.wait(0.09)
-                        for _, f in vigFrames do tw(f, 0.22, { BackgroundTransparency = cfg.vigTarget }) end
+                        for _, f in vigFrames do tw(f, 0.22, { BackgroundTransparency = cfg.vigTarget }, Enum.EasingStyle.Quad) end
                         task.wait(0.60 + rng:NextNumber() * 0.25)
 
                         -- Second beat (slightly weaker)
                         local darkTarget2 = math.max(0, cfg.vigTarget - intensity * 0.08)
-                        for _, f in vigFrames do tw(f, 0.06, { BackgroundTransparency = darkTarget2 }) end
+                        for _, f in vigFrames do tw(f, 0.06, { BackgroundTransparency = darkTarget2 }, Enum.EasingStyle.Quad) end
                         task.wait(0.07)
-                        for _, f in vigFrames do tw(f, 0.28, { BackgroundTransparency = cfg.vigTarget }) end
+                        for _, f in vigFrames do tw(f, 0.28, { BackgroundTransparency = cfg.vigTarget }, Enum.EasingStyle.Quad) end
 
                         -- Rest between heartbeat cycles
                         task.wait(1.0 + rng:NextNumber() * 0.6)
@@ -276,9 +277,9 @@ local function runAnxiety(level: number)
                                 task.wait(rng:NextNumber() * 2.2 + 0.6)
                                 if not flickerActive then break end
                                 if rng:NextNumber() < cfg.flickerChance then
-                                        tw(colorCorrection, 0.04, { Brightness = -0.28 })
+                                        tw(colorCorrection, 0.04, { Brightness = -0.28 }, Enum.EasingStyle.Linear)
                                         task.wait(0.05 + rng:NextNumber() * 0.07)
-                                        tw(colorCorrection, 0.07, { Brightness = 0 })
+                                        tw(colorCorrection, 0.07, { Brightness = 0 }, Enum.EasingStyle.Linear)
                                 end
                         end
                 end)
@@ -294,12 +295,16 @@ local function runAnxiety(level: number)
                                 task.wait(rng:NextNumber() * 9 + 5)
                                 if not flashActive then break end
                                 blackFrame.BackgroundTransparency = 0.35
-                                tw(blackFrame, 0.08, { BackgroundTransparency = 1 })
+                                tw(blackFrame, 0.08, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad)
                         end
                 end)
         end
 
         -- ── Floating messages ────────────────────────────────────────────────
+        -- activeLabels tracks every label that is still visible so cleanup can
+        -- immediately fade them all out rather than waiting for their timers.
+
+        local activeLabels: { TextLabel } = {}
 
         local totalMessages = rng:NextInteger(cfg.msgCount[1], cfg.msgCount[2])
         local pool          = shuffle(MESSAGES)
@@ -334,11 +339,17 @@ local function runAnxiety(level: number)
                         label.ZIndex                 = 5
                         label.Parent                 = gui
 
+                        table.insert(activeLabels, label)
+
                         tw(label, 0.45, { TextTransparency = 0.05 })
                         task.delay(holdT, function()
-                                tw(label, 0.65, { TextTransparency = 1 })
-                                task.delay(0.7, function()
-                                        label:Destroy()
+                                if not label.Parent then return end
+                                tw(label, 0.55, { TextTransparency = 1 })
+                                task.delay(0.6, function()
+                                        if label.Parent then
+                                                label:Destroy()
+                                        end
+                                        table.remove(activeLabels, table.find(activeLabels, label) or 0)
                                 end)
                         end)
 
@@ -350,7 +361,7 @@ local function runAnxiety(level: number)
         -- ── Fade OUT and cleanup ─────────────────────────────────────────────
 
         task.delay(cfg.duration, function()
-                local FADE_OUT = math.min(0.5, cfg.duration * 0.25)
+                local FADE_OUT = math.min(0.55, cfg.duration * 0.22)
 
                 shakeActive     = false
                 heartbeatActive = false
@@ -358,7 +369,24 @@ local function runAnxiety(level: number)
                 flashActive     = false
                 messagesActive  = false
 
-                shakeConn:Disconnect()
+                -- Smoothly ramp shake amplitude to zero over the fade-out window
+                task.spawn(function()
+                        local steps = 20
+                        local start = shakeAmplitude
+                        for i = 1, steps do
+                                task.wait(FADE_OUT / steps)
+                                shakeAmplitude = start * (1 - i / steps)
+                        end
+                        shakeAmplitude = 0
+                        shakeConn:Disconnect()
+                end)
+
+                -- Immediately fade out ALL currently visible message labels
+                for _, label in activeLabels do
+                        if label.Parent then
+                                tw(label, FADE_OUT * 0.8, { TextTransparency = 1 })
+                        end
+                end
 
                 for _, f in vigFrames do
                         tw(f, FADE_OUT, { BackgroundTransparency = 1 })
@@ -366,7 +394,7 @@ local function runAnxiety(level: number)
                 tw(colorCorrection, FADE_OUT, { TintColor = Color3.new(1, 1, 1), Brightness = 0 })
                 tw(blurEffect,      FADE_OUT, { Size = 0 })
 
-                task.delay(FADE_OUT + 0.2, function()
+                task.delay(FADE_OUT + 0.15, function()
                         gui:Destroy()
                         colorCorrection:Destroy()
                         blurEffect:Destroy()
