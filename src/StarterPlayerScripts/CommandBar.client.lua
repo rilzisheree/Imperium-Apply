@@ -989,7 +989,8 @@ blocker.MouseButton1Click:Connect(function()
 end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        if input.KeyCode == CFG.OPEN_KEY and not gameProcessed then
+        -- Toggle always fires — gameProcessed would block it if chat/another GUI is focused.
+        if input.KeyCode == CFG.OPEN_KEY then
                 if isOpen then
                         closeBar()
                 else
