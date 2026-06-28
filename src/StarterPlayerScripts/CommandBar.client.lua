@@ -42,8 +42,8 @@ local CFG = {
         -- Bar geometry (slightly larger than v1)
         BAR_WIDTH        = 580,
         BAR_HEIGHT       = 52,
-        BAR_Y_OPEN       = 80,
-        BAR_Y_CLOSED     = 58,
+        BAR_Y_OPEN       = 82,
+        BAR_Y_CLOSED     = 38,
         BAR_CORNER       = 8,
 
         -- ── Gray / Black theme ────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ local CFG = {
         AC_DESC_COLOR    = Color3.fromRGB(120, 120, 135),
 
         -- Animation
-        ANIM_TIME        = 0.18,
+        ANIM_TIME        = 0.30,
 
         -- History
         HISTORY_MAX      = 80,
@@ -825,8 +825,8 @@ end
 
 -- ─── Open / Close ─────────────────────────────────────────────────────────────
 
-local openTInfo  = TweenInfo.new(CFG.ANIM_TIME, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-local closeTInfo = TweenInfo.new(CFG.ANIM_TIME, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+local openTInfo  = TweenInfo.new(CFG.ANIM_TIME, Enum.EasingStyle.Expo, Enum.EasingDirection.Out)
+local closeTInfo = TweenInfo.new(CFG.ANIM_TIME, Enum.EasingStyle.Expo, Enum.EasingDirection.In)
 
 local function openBar()
         if isOpen then return end
@@ -910,9 +910,6 @@ local function executeCommand()
         end
 
         CommandRemotes.CommandExecuted:FireServer(cmdName, args)
-
-        -- Show right-side notification (UI-only animation)
-        showNotification("Command Executed")
 
         closeBar()
 end
@@ -1052,9 +1049,13 @@ end)
 -- Show success/failure messages returned by the server as right-side notifications.
 
 CommandRemotes.CommandFeedback.OnClientEvent:Connect(function(success: boolean, msg: string)
-        if typeof(msg) ~= "string" then return end
-        local prefix = success and "✓  " or "✗  "
-        showNotification(prefix .. msg)
+        if success then
+                showNotification("✓  Command Executed")
+        else
+                if typeof(msg) == "string" then
+                        showNotification("✗  " .. msg)
+                end
+        end
 end)
 
 print("[CommandBar] Staff command bar active. Press ; to open.")
