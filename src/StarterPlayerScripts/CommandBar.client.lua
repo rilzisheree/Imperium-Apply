@@ -986,13 +986,20 @@ blocker.MouseButton1Click:Connect(function()
         closeBar()
 end)
 
--- Dual binding: CAS fires before chat/textboxes and sinks the key.
--- UIS is a fallback in case CAS has an issue in this Studio version.
--- Both have the same guard (isOpen), so double-firing is a safe no-op.
+-- handleToggle is called by both CAS and UIS. In Roblox, UIS.InputBegan fires for
+-- ALL inputs even when CAS sinks them, so without a debounce pressing ; would call
+-- handleToggle() twice: open then immediately close. The debounce drops any second
+-- call that arrives within 100 ms of the first.
+local lastToggleTick = 0
+
 local function handleToggle()
+        local now = tick()
+        if now - lastToggleTick < 0.1 then return end
+        lastToggleTick = now
         if isOpen then closeBar() else openBar() end
 end
 
+-- CAS: high-priority binding that sinks the key so it doesn't get typed elsewhere.
 local ok_cas, err_cas = pcall(function()
         ContextActionService:BindActionAtPriority(
                 "ToggleCommandBar",
@@ -1004,7 +1011,7 @@ local ok_cas, err_cas = pcall(function()
                         return Enum.ContextActionResult.Sink
                 end,
                 false,
-                3000,  -- High priority (raw value, avoids enum lookup issues)
+                2000,  -- Enum.ContextActionPriority.High.Value
                 CFG.OPEN_KEY
         )
 end)
@@ -1012,11 +1019,18 @@ if not ok_cas then
         warn("[CommandBar] CAS binding failed:", err_cas)
 end
 
--- UIS handles in-bar keys (Escape, Enter, history, Tab, etc.)
--- The OPEN_KEY toggle is handled exclusively by CAS above to avoid double-firing:
--- UserInputService.InputBegan fires regardless of CAS sinking, so both would call
--- handleToggle() — opening then immediately closing the bar.
-UserInputService.InputBegan:Connect(function(input)
+-- UIS: fires regardless of CAS sinking — acts as a reliable fallback and also
+-- handles all in-bar keys (Escape, Enter, history, Tab, etc.).
+-- The debounce in handleToggle prevents a double-toggle when both fire.
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if input.KeyCode == CFG.OPEN_KEY then
+                -- Only open from game context (not while typing in another TextBox)
+                if not gameProcessed then
+                        handleToggle()
+                end
+                return
+        end
+
         if not isOpen then return end
 
         if input.KeyCode == Enum.KeyCode.Escape then
