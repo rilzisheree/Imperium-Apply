@@ -6,6 +6,7 @@
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
+local Lighting          = game:GetService("Lighting")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
@@ -34,12 +35,19 @@ gui.ResetOnSpawn   = false
 gui.IgnoreGuiInset = true
 gui.Parent         = PlayerGui
 
--- ─── Vignette frames ───────────────────────────────────────────────────────────
--- BackgroundTransparency is tweened 1→target to fade in, target→1 to fade out.
--- UIGradient makes each frame opaque at its edge and transparent toward centre.
--- When BackgroundTransparency=1 the whole frame is invisible; at 0 it is fully dark.
+-- ─── Blur effect (SM only — very subtle) ──────────────────────────────────────
 
-local vigFrames = {}   -- list of all 4 frames so we can tween them together
+local blur = Instance.new("BlurEffect")
+blur.Size   = 0
+blur.Parent = Lighting
+
+local function tweenBlur(target, time)
+        tw(blur, time, { Size = target })
+end
+
+-- ─── Vignette frames (IM only) ────────────────────────────────────────────────
+
+local vigFrames = {}
 
 local function makeVigFrame(size, position, anchor, gradRot)
         local f = Instance.new("Frame")
@@ -47,16 +55,16 @@ local function makeVigFrame(size, position, anchor, gradRot)
         f.Position               = position
         f.AnchorPoint            = anchor
         f.BackgroundColor3       = Color3.fromRGB(0, 0, 0)
-        f.BackgroundTransparency = 1           -- starts invisible
+        f.BackgroundTransparency = 1
         f.BorderSizePixel        = 0
         f.ZIndex                 = 4
         f.Parent                 = gui
 
         local g = Instance.new("UIGradient")
         g.Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0,    0.55),  -- very faint at edge
+                NumberSequenceKeypoint.new(0,    0.55),
                 NumberSequenceKeypoint.new(0.4,  0.85),
-                NumberSequenceKeypoint.new(1,    1),     -- transparent toward centre
+                NumberSequenceKeypoint.new(1,    1),
         })
         g.Rotation = gradRot
         g.Parent   = f
@@ -65,10 +73,10 @@ local function makeVigFrame(size, position, anchor, gradRot)
         return f
 end
 
-makeVigFrame(UDim2.new(1, 0, 0.48, 0),  UDim2.new(0, 0, 0, 0), Vector2.new(0, 0),  90)   -- top
-makeVigFrame(UDim2.new(1, 0, 0.48, 0),  UDim2.new(0, 0, 1, 0), Vector2.new(0, 1), -90)   -- bottom
-makeVigFrame(UDim2.new(0.32, 0, 1, 0),  UDim2.new(0, 0, 0, 0), Vector2.new(0, 0),   0)   -- left
-makeVigFrame(UDim2.new(0.32, 0, 1, 0),  UDim2.new(1, 0, 0, 0), Vector2.new(1, 0), 180)   -- right
+makeVigFrame(UDim2.new(1, 0, 0.48, 0),  UDim2.new(0, 0, 0, 0), Vector2.new(0, 0),  90)
+makeVigFrame(UDim2.new(1, 0, 0.48, 0),  UDim2.new(0, 0, 1, 0), Vector2.new(0, 1), -90)
+makeVigFrame(UDim2.new(0.32, 0, 1, 0),  UDim2.new(0, 0, 0, 0), Vector2.new(0, 0),   0)
+makeVigFrame(UDim2.new(0.32, 0, 1, 0),  UDim2.new(1, 0, 0, 0), Vector2.new(1, 0), 180)
 
 local function tweenVig(target, time)
         for _, f in vigFrames do
@@ -77,7 +85,6 @@ local function tweenVig(target, time)
 end
 
 -- ─── SM labels ─────────────────────────────────────────────────────────────────
--- Header is big; message body is smaller underneath it.
 
 local smHeader = Instance.new("TextLabel")
 smHeader.Name                   = "SMHeader"
@@ -87,7 +94,7 @@ smHeader.Size                   = UDim2.new(0.75, 0, 0, 38)
 smHeader.BackgroundTransparency = 1
 smHeader.TextColor3             = Color3.fromRGB(255, 255, 255)
 smHeader.TextTransparency       = 1
-smHeader.TextSize               = 36              -- bigger header
+smHeader.TextSize               = 36
 smHeader.FontFace               = FONT_ITALIC
 smHeader.Text                   = "[ Server Message ]"
 smHeader.TextXAlignment         = Enum.TextXAlignment.Center
@@ -104,7 +111,7 @@ smBody.Size                   = UDim2.new(0.70, 0, 0, 110)
 smBody.BackgroundTransparency = 1
 smBody.TextColor3             = Color3.fromRGB(255, 255, 255)
 smBody.TextTransparency       = 1
-smBody.TextSize               = 28              -- smaller body text
+smBody.TextSize               = 28
 smBody.FontFace               = FONT_REG
 smBody.Text                   = ""
 smBody.TextWrapped            = true
@@ -120,7 +127,7 @@ smBody.Parent                 = gui
 local imLabel = Instance.new("TextLabel")
 imLabel.Name                   = "IMLabel"
 imLabel.AnchorPoint            = Vector2.new(0.5, 0.5)
-imLabel.Position               = UDim2.new(0.5, 0, 0.70, 0)
+imLabel.Position               = UDim2.new(0.5, 0, 0.60, 0)
 imLabel.Size                   = UDim2.new(0.50, 0, 0, 100)
 imLabel.BackgroundTransparency = 1
 imLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
@@ -151,7 +158,7 @@ local activeToken = {}
 
 local function cancelAll()
         activeToken = {}
-        -- snap everything invisible immediately
+        blur.Size = 0
         for _, f in vigFrames do f.BackgroundTransparency = 1 end
         smHeader.Visible          = false
         smHeader.TextTransparency = 1
@@ -174,14 +181,14 @@ local function showSM(text: string)
         smBody.Visible            = true
         smBody.TextTransparency   = 1
 
-        -- vignette SM: barely-there edge (target 0.82)
-        tweenVig(0.82, FADE_IN)
+        -- tiny blur near the message, no vignette
+        tweenBlur(5, FADE_IN)
         tw(smHeader, FADE_IN, { TextTransparency = 0.10 })
         tw(smBody,   FADE_IN, { TextTransparency = 0    })
 
         task.delay(FADE_IN + calcHold(text), function()
                 if activeToken ~= token then return end
-                tweenVig(1, FADE_OUT)
+                tweenBlur(0, FADE_OUT)
                 tw(smHeader, FADE_OUT, { TextTransparency = 1 })
                 tw(smBody,   FADE_OUT, { TextTransparency = 1 })
                 task.delay(FADE_OUT + 0.05, function()
@@ -203,7 +210,6 @@ local function showIM(text: string)
         imLabel.Visible          = true
         imLabel.TextTransparency = 1
 
-        -- vignette IM: barely-there edge (target 0.90)
         tweenVig(0.90, FADE_IN)
         tw(imLabel, FADE_IN, { TextTransparency = 0 })
 
