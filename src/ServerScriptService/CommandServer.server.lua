@@ -103,6 +103,27 @@ HANDLERS["im"] = function(executor, args)
         ok(executor, 'Individual message sent to ' .. target.DisplayName .. ': "' .. msg .. '"')
 end
 
+-- anxiety <player> <level>
+HANDLERS["anxiety"] = function(executor, args)
+        if #args < 2 then
+                fail(executor, "Usage: anxiety <player> <level 1-5>")
+                return
+        end
+        local target = resolvePlayer(executor, args[1])
+        if not target then
+                fail(executor, 'Player "' .. args[1] .. '" not found.')
+                return
+        end
+        local level = tonumber(args[2])
+        if not level or level < 1 or level > 5 then
+                fail(executor, "Level must be a number from 1 to 5.")
+                return
+        end
+        level = math.round(level)
+        CommandRemotes.Anxiety:FireClient(target, level)
+        ok(executor, "Anxiety level " .. level .. " triggered on " .. target.DisplayName .. ".")
+end
+
 -- ─── Incoming remote handler ───────────────────────────────────────────────────
 
 CommandRemotes.CommandExecuted.OnServerEvent:Connect(function(executor: Player, cmdName: string, args: { string })

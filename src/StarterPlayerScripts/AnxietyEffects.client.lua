@@ -1,0 +1,388 @@
+--[[
+        AnxietyEffects.client.lua
+        LocalScript — StarterPlayerScripts
+        Handles the anxiety command visual effects on the targeted player.
+--]]
+
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService      = game:GetService("TweenService")
+local Lighting          = game:GetService("Lighting")
+local RunService        = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
+local Camera      = workspace.CurrentCamera
+
+local isRunning = false
+local rng       = Random.new()
+
+-- ─── Level configuration ──────────────────────────────────────────────────────
+--
+-- vigTarget     : BackgroundTransparency the vignette frames tween TO (lower = darker edges)
+-- tint          : ColorCorrectionEffect.TintColor at full intensity
+-- blur          : BlurEffect.Size at full intensity
+-- shakeAmp      : Max camera rotation offset in radians per frame
+-- msgCount      : {min, max} number of messages to show over the duration
+-- msgInterval   : {min, max} seconds between messages (picked randomly each time)
+-- flickerChance : Probability per flicker check that a screen dim flash occurs
+-- blackFlash    : Whether to fire brief near-black screen moments (level 4+)
+-- heartbeat     : Intensity of the vignette pulse (0–1 scale)
+
+local LEVEL = {
+        [1] = {
+                duration      = 15,
+                vigTarget     = 0.82,
+                tint          = Color3.new(1, 0.94, 0.94),
+                blur          = 0,
+                shakeAmp      = 0.002,
+                msgCount      = { 4, 6 },
+                msgInterval   = { 2.0, 3.5 },
+                flickerChance = 0,
+                blackFlash    = false,
+                heartbeat     = 0.25,
+        },
+        [2] = {
+                duration      = 25,
+                vigTarget     = 0.72,
+                tint          = Color3.new(1, 0.88, 0.88),
+                blur          = 4,
+                shakeAmp      = 0.005,
+                msgCount      = { 8, 10 },
+                msgInterval   = { 1.4, 2.5 },
+                flickerChance = 0.08,
+                blackFlash    = false,
+                heartbeat     = 0.45,
+        },
+        [3] = {
+                duration      = 40,
+                vigTarget     = 0.62,
+                tint          = Color3.new(1, 0.80, 0.80),
+                blur          = 9,
+                shakeAmp      = 0.009,
+                msgCount      = { 12, 15 },
+                msgInterval   = { 1.0, 2.0 },
+                flickerChance = 0.15,
+                blackFlash    = false,
+                heartbeat     = 0.60,
+        },
+        [4] = {
+                duration      = 60,
+                vigTarget     = 0.50,
+                tint          = Color3.new(1, 0.70, 0.70),
+                blur          = 15,
+                shakeAmp      = 0.014,
+                msgCount      = { 18, 22 },
+                msgInterval   = { 0.7, 1.5 },
+                flickerChance = 0.25,
+                blackFlash    = true,
+                heartbeat     = 0.75,
+        },
+        [5] = {
+                duration      = 90,
+                vigTarget     = 0.38,
+                tint          = Color3.new(1, 0.60, 0.60),
+                blur          = 22,
+                shakeAmp      = 0.020,
+                msgCount      = { 30, 35 },
+                msgInterval   = { 0.4, 0.9 },
+                flickerChance = 0.40,
+                blackFlash    = true,
+                heartbeat     = 0.90,
+        },
+}
+
+local MESSAGES = {
+        "I'm scared...",
+        "What is happening?",
+        "Why can't I breathe?",
+        "Something isn't right.",
+        "I don't feel safe.",
+        "Don't look behind you.",
+        "They're watching.",
+        "Why is everyone staring?",
+        "Make it stop...",
+        "I can't think.",
+        "My heart...",
+        "I need to leave.",
+        "Why won't it end?",
+        "Someone help me.",
+        "I don't want to be here.",
+        "Everything feels wrong.",
+        "I hear something.",
+        "It's getting closer.",
+        "I can't move.",
+        "Please wake up.",
+        "Am I losing my mind?",
+        "They're here.",
+        "It's behind you.",
+        "Don't turn around.",
+        "You aren't alone.",
+        "It's too late.",
+}
+
+-- ─── Helpers ──────────────────────────────────────────────────────────────────
+
+local function tw(obj, t, props, style, dir)
+        style = style or Enum.EasingStyle.Quad
+        dir   = dir   or Enum.EasingDirection.Out
+        TweenService:Create(obj, TweenInfo.new(t, style, dir), props):Play()
+end
+
+local function shuffle(t: { any }): { any }
+        local copy = table.clone(t)
+        local n    = #copy
+        for i = n, 2, -1 do
+                local j     = rng:NextInteger(1, i)
+                copy[i], copy[j] = copy[j], copy[i]
+        end
+        return copy
+end
+
+-- ─── Main effect ──────────────────────────────────────────────────────────────
+
+local function runAnxiety(level: number)
+        if isRunning then return end
+        local cfg = LEVEL[level]
+        if not cfg then return end
+        isRunning = true
+
+        -- ── ScreenGui ───────────────────────────────────────────────────────
+
+        local gui = Instance.new("ScreenGui")
+        gui.Name           = "AnxietyEffect"
+        gui.DisplayOrder   = 60
+        gui.ResetOnSpawn   = false
+        gui.IgnoreGuiInset = true
+        gui.Parent         = PlayerGui
+
+        -- ── Vignette (4 gradient frames: top, bottom, left, right) ──────────
+        --
+        -- Each frame covers ~40% of the screen from its edge inward.
+        -- UIGradient fades from opaque at the edge (keypoint 0 = transparency 0)
+        -- to fully transparent at the inner edge (keypoint 1 = transparency 1).
+        -- The rotation determines which end of the gradient faces outward:
+        --   top=90, bottom=270, left=0, right=180
+        --
+        -- BackgroundTransparency starts at 1 (invisible) and tweens to cfg.vigTarget.
+
+        local vigFrames = {}
+
+        local vigData = {
+                { UDim2.new(1, 0, 0.42, 0), UDim2.new(0, 0, 0,    0), 90  },
+                { UDim2.new(1, 0, 0.42, 0), UDim2.new(0, 0, 0.58, 0), 270 },
+                { UDim2.new(0.38, 0, 1, 0), UDim2.new(0, 0, 0,    0), 0   },
+                { UDim2.new(0.38, 0, 1, 0), UDim2.new(0.62, 0, 0, 0), 180 },
+        }
+
+        for _, data in vigData do
+                local f = Instance.new("Frame")
+                f.Size                   = data[1]
+                f.Position               = data[2]
+                f.BackgroundColor3       = Color3.new(0, 0, 0)
+                f.BackgroundTransparency = 1
+                f.BorderSizePixel        = 0
+                f.ZIndex                 = 2
+                f.Parent                 = gui
+
+                local g = Instance.new("UIGradient")
+                g.Transparency = NumberSequence.new({
+                        NumberSequenceKeypoint.new(0,    0),
+                        NumberSequenceKeypoint.new(0.55, 0.5),
+                        NumberSequenceKeypoint.new(1,    1),
+                })
+                g.Rotation = data[3]
+                g.Parent   = f
+
+                table.insert(vigFrames, f)
+        end
+
+        -- ── Black flash overlay (level 4+) ──────────────────────────────────
+
+        local blackFrame = Instance.new("Frame")
+        blackFrame.Size                   = UDim2.new(1, 0, 1, 0)
+        blackFrame.BackgroundColor3       = Color3.new(0, 0, 0)
+        blackFrame.BackgroundTransparency = 1
+        blackFrame.BorderSizePixel        = 0
+        blackFrame.ZIndex                 = 8
+        blackFrame.Parent                 = gui
+
+        -- ── Lighting effects ────────────────────────────────────────────────
+
+        local colorCorrection = Instance.new("ColorCorrectionEffect")
+        colorCorrection.TintColor  = Color3.new(1, 1, 1)
+        colorCorrection.Brightness = 0
+        colorCorrection.Parent     = Lighting
+
+        local blurEffect = Instance.new("BlurEffect")
+        blurEffect.Size   = 0
+        blurEffect.Parent = Lighting
+
+        -- ── Fade IN ─────────────────────────────────────────────────────────
+
+        local FADE_IN = 2.5
+
+        for _, f in vigFrames do
+                tw(f, FADE_IN, { BackgroundTransparency = cfg.vigTarget })
+        end
+        tw(colorCorrection, FADE_IN, { TintColor = cfg.tint })
+        if cfg.blur > 0 then
+                tw(blurEffect, FADE_IN, { Size = cfg.blur })
+        end
+
+        -- ── Camera shake (RenderStepped — applies after Roblox camera update) ─
+
+        local shakeActive    = true
+        local shakeConn = RunService.RenderStepped:Connect(function()
+                if not shakeActive then return end
+                local amp = cfg.shakeAmp
+                local rx  = (rng:NextNumber() * 2 - 1) * amp
+                local ry  = (rng:NextNumber() * 2 - 1) * amp * 0.6
+                Camera.CFrame = Camera.CFrame * CFrame.Angles(rx, ry, 0)
+        end)
+
+        -- ── Heartbeat pulse ─────────────────────────────────────────────────
+
+        local heartbeatActive = true
+        task.spawn(function()
+                while heartbeatActive do
+                        -- Double-beat pattern: two quick pulses then a rest
+                        local intensity  = cfg.heartbeat
+                        local darkTarget = math.max(0, cfg.vigTarget - intensity * 0.14)
+
+                        -- First beat
+                        for _, f in vigFrames do tw(f, 0.07, { BackgroundTransparency = darkTarget }) end
+                        task.wait(0.09)
+                        for _, f in vigFrames do tw(f, 0.22, { BackgroundTransparency = cfg.vigTarget }) end
+                        task.wait(0.60 + rng:NextNumber() * 0.25)
+
+                        -- Second beat (slightly weaker)
+                        local darkTarget2 = math.max(0, cfg.vigTarget - intensity * 0.08)
+                        for _, f in vigFrames do tw(f, 0.06, { BackgroundTransparency = darkTarget2 }) end
+                        task.wait(0.07)
+                        for _, f in vigFrames do tw(f, 0.28, { BackgroundTransparency = cfg.vigTarget }) end
+
+                        -- Rest between heartbeat cycles
+                        task.wait(1.0 + rng:NextNumber() * 0.6)
+                end
+        end)
+
+        -- ── Screen flicker ──────────────────────────────────────────────────
+
+        local flickerActive = true
+        if cfg.flickerChance > 0 then
+                task.spawn(function()
+                        while flickerActive do
+                                task.wait(rng:NextNumber() * 2.2 + 0.6)
+                                if not flickerActive then break end
+                                if rng:NextNumber() < cfg.flickerChance then
+                                        tw(colorCorrection, 0.04, { Brightness = -0.28 })
+                                        task.wait(0.05 + rng:NextNumber() * 0.07)
+                                        tw(colorCorrection, 0.07, { Brightness = 0 })
+                                end
+                        end
+                end)
+        end
+
+        -- ── Black flashes (level 4+) ─────────────────────────────────────────
+
+        local flashActive = true
+        if cfg.blackFlash then
+                task.spawn(function()
+                        task.wait(4)
+                        while flashActive do
+                                task.wait(rng:NextNumber() * 9 + 5)
+                                if not flashActive then break end
+                                blackFrame.BackgroundTransparency = 0.35
+                                tw(blackFrame, 0.08, { BackgroundTransparency = 1 })
+                        end
+                end)
+        end
+
+        -- ── Floating messages ────────────────────────────────────────────────
+
+        local totalMessages = rng:NextInteger(cfg.msgCount[1], cfg.msgCount[2])
+        local pool          = shuffle(MESSAGES)
+        local msgIndex      = 0
+
+        local messagesActive = true
+        task.spawn(function()
+                task.wait(1.8)
+                while messagesActive and msgIndex < totalMessages do
+                        msgIndex += 1
+                        local text  = pool[(msgIndex - 1) % #pool + 1]
+                        local xPos  = rng:NextNumber() * 0.68 + 0.04
+                        local yPos  = rng:NextNumber() * 0.75 + 0.06
+                        local fSize = rng:NextInteger(15, 23)
+                        local holdT = rng:NextNumber() * 1.6 + 0.9
+
+                        local label = Instance.new("TextLabel")
+                        label.Text                   = text
+                        label.Size                   = UDim2.new(0.32, 0, 0, fSize + 10)
+                        label.Position               = UDim2.new(xPos, 0, yPos, 0)
+                        label.BackgroundTransparency = 1
+                        label.TextColor3             = Color3.new(
+                                1,
+                                rng:NextNumber() * 0.12 + 0.82,
+                                rng:NextNumber() * 0.12 + 0.82
+                        )
+                        label.TextTransparency       = 1
+                        label.TextSize               = fSize
+                        label.Font                   = Enum.Font.GothamSemibold
+                        label.TextWrapped            = true
+                        label.TextXAlignment         = Enum.TextXAlignment.Left
+                        label.ZIndex                 = 5
+                        label.Parent                 = gui
+
+                        tw(label, 0.45, { TextTransparency = 0.05 })
+                        task.delay(holdT, function()
+                                tw(label, 0.65, { TextTransparency = 1 })
+                                task.delay(0.7, function()
+                                        label:Destroy()
+                                end)
+                        end)
+
+                        local interval = rng:NextNumber() * (cfg.msgInterval[2] - cfg.msgInterval[1]) + cfg.msgInterval[1]
+                        task.wait(interval)
+                end
+        end)
+
+        -- ── Fade OUT and cleanup ─────────────────────────────────────────────
+
+        task.delay(cfg.duration, function()
+                local FADE_OUT = 3.0
+
+                shakeActive     = false
+                heartbeatActive = false
+                flickerActive   = false
+                flashActive     = false
+                messagesActive  = false
+
+                shakeConn:Disconnect()
+
+                for _, f in vigFrames do
+                        tw(f, FADE_OUT, { BackgroundTransparency = 1 })
+                end
+                tw(colorCorrection, FADE_OUT, { TintColor = Color3.new(1, 1, 1), Brightness = 0 })
+                tw(blurEffect,      FADE_OUT, { Size = 0 })
+
+                task.delay(FADE_OUT + 0.2, function()
+                        gui:Destroy()
+                        colorCorrection:Destroy()
+                        blurEffect:Destroy()
+                        isRunning = false
+                end)
+        end)
+end
+
+-- ─── Remote listener ──────────────────────────────────────────────────────────
+
+local CommandRemotes = require(ReplicatedStorage:WaitForChild("CommandRemotes"))
+
+if CommandRemotes.Anxiety then
+        CommandRemotes.Anxiety.OnClientEvent:Connect(function(level: number)
+                if typeof(level) ~= "number" then return end
+                level = math.clamp(math.round(level), 1, 5)
+                runAnxiety(level)
+        end)
+end

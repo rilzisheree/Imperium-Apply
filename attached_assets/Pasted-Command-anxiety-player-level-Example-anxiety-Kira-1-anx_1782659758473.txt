@@ -1,0 +1,101 @@
+Command: anxiety {player} {level}
+
+Example:
+
+:anxiety Kira 1
+:anxiety Kira 5
+
+The command should only affect the targeted player.
+
+General Effect
+
+The command simulates an intense anxiety/panic attack through UI and visual effects. It should not kill or damage the player. It is entirely psychological.
+
+Visual Effects
+Dark vignette gradually appears around the edges of the screen.
+The screen gains a dark red tint.
+Slight screen blur.
+Subtle camera shake that increases with higher levels.
+Slow heartbeat pulsing effect.
+Random flickering.
+Optional breathing sound and heartbeat audio.
+Brief flashes where the screen becomes darker before returning.
+Messages
+
+Random messages should fade in and out around different areas of the screen. They should never all appear at once. They should have random positions, random fade timings, and overlap naturally.
+
+Example messages:
+
+I'm scared...
+What is happening?
+Why can't I breathe?
+Something isn't right.
+I don't feel safe.
+Don't look behind you.
+They're watching.
+Why is everyone staring?
+Make it stop...
+I can't think.
+My heart...
+I need to leave.
+Why won't it end?
+Someone help me.
+I don't want to be here.
+Everything feels wrong.
+I hear something.
+It's getting closer.
+I can't move.
+Please wake up.
+Am I losing my mind?
+They're here.
+It's behind you.
+Don't turn around.
+You aren't alone.
+It's too late.
+
+Messages should become more frequent and disturbing as the level increases.
+
+Levels
+Level 1
+Lasts about 15 seconds.
+Very light vignette.
+Light red tint.
+4–6 messages.
+Almost no camera shake.
+Level 2
+Lasts about 25 seconds.
+Stronger vignette.
+Slight blur.
+More heartbeat.
+8–10 messages.
+Level 3
+Lasts about 40 seconds.
+Noticeable camera shake.
+More screen flickers.
+12–15 messages.
+Faster message appearance.
+Level 4
+Lasts about 60 seconds.
+Heavy vignette.
+Strong red tint.
+Frequent heartbeat.
+Heavy blur.
+18–22 messages.
+Short black screen flashes.
+Level 5
+Lasts about 90 seconds.
+Maximum intensity.
+Strong heartbeat.
+Heavy camera shake.
+Constant flickering.
+Screen occasionally becomes almost black for a fraction of a second.
+30+ messages.
+Messages appear rapidly from random locations and overlap naturally.
+Effect should feel overwhelming but still allow the player to move.
+Technical Requirements
+Use TweenService for all UI transitions.
+Use Random for message order, timing, and positions.
+Prevent duplicate anxiety effects from stacking on the same player.
+Automatically clean up every UI object and effect when finished.
+The command should support multiple players independently.
+Organize the implementation cleanly into reusable modules/functions.

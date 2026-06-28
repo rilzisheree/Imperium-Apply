@@ -22,6 +22,7 @@ if RunService:IsServer() then
         CommandRemotes.CommandFeedback = getOrCreate("CmdFeedback")
         CommandRemotes.SM              = getOrCreate("CmdSM")
         CommandRemotes.IM              = getOrCreate("CmdIM")
+        CommandRemotes.Anxiety         = getOrCreate("CmdAnxiety")
         print("[CommandRemotes] Ready on server.")
 else
         local function wait(name: string): RemoteEvent
@@ -33,6 +34,7 @@ else
         CommandRemotes.CommandFeedback = wait("CmdFeedback")
         CommandRemotes.SM              = wait("CmdSM")
         CommandRemotes.IM              = wait("CmdIM")
+        CommandRemotes.Anxiety         = wait("CmdAnxiety")
         print("[CommandRemotes] Ready on client.")
 end
 

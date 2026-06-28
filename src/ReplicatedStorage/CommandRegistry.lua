@@ -21,6 +21,13 @@ CommandRegistry.COMMANDS = {
                 aliases     = {},
         },
 
+        anxiety = {
+                description = "Trigger a panic attack visual effect on a player (level 1–5)",
+                args        = { "player", "level" },
+                permission  = "Admin",
+                aliases     = {},
+        },
+
 }
 
 --[[
