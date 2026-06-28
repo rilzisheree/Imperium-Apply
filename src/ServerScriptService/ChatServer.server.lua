@@ -78,7 +78,10 @@ local function filterMessage(sender: Player, text: string): string
         local ok, result = pcall(function()
                 return Chat:FilterStringAsync(text, sender, sender)
         end)
-        return (ok and result) or text
+        if ok and type(result) == "string" and result ~= "" then
+                return result
+        end
+        return text
 end
 
 -- Returns the HumanoidRootPart position, or nil if character isn't loaded
