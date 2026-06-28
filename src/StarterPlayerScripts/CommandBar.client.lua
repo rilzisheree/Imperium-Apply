@@ -23,10 +23,11 @@
           • Feedback toasts appear bottom-right
 --]]
 
-local Players           = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService  = game:GetService("UserInputService")
-local TweenService      = game:GetService("TweenService")
+local Players               = game:GetService("Players")
+local ReplicatedStorage     = game:GetService("ReplicatedStorage")
+local UserInputService      = game:GetService("UserInputService")
+local TweenService          = game:GetService("TweenService")
+local ContextActionService  = game:GetService("ContextActionService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
@@ -988,16 +989,28 @@ blocker.MouseButton1Click:Connect(function()
         closeBar()
 end)
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-        -- Toggle always fires — gameProcessed would block it if chat/another GUI is focused.
-        if input.KeyCode == CFG.OPEN_KEY then
+-- High-priority binding so ; is captured before chat, TextBoxes, or anything else.
+-- Sinking the input also prevents the semicolon from being typed into the input box.
+ContextActionService:BindActionAtPriority(
+        "ToggleCommandBar",
+        function(_, inputState)
+                if inputState ~= Enum.UserInputState.Begin then
+                        return Enum.ContextActionResult.Pass
+                end
                 if isOpen then
                         closeBar()
                 else
                         openBar()
                 end
-                return
-        end
+                return Enum.ContextActionResult.Sink
+        end,
+        false,   -- no on-screen touch button
+        Enum.ContextActionPriority.High.Value,
+        CFG.OPEN_KEY
+)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        -- (toggle is handled by ContextActionService above)
 
         if not isOpen then return end
 
