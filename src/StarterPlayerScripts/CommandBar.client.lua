@@ -509,7 +509,9 @@ blocker.ZIndex                 = 2
 blocker.Visible                = false
 blocker.Parent                 = gui
 
--- ─── Right-side command notification (UI + animation only) ─────────────────────
+-- ─── Stacking notification system ───────────────────────────────────────────────
+-- Each call to showNotification() spawns its own card that slides in from the right.
+-- Cards stack upward from the bottom-right corner and reflow smoothly when one dismisses.
 
 local notifGui = Instance.new("ScreenGui")
 notifGui.Name           = "CmdNotification"
@@ -518,81 +520,126 @@ notifGui.ResetOnSpawn   = false
 notifGui.IgnoreGuiInset = true
 notifGui.Parent         = PlayerGui
 
-local notifFrame = Instance.new("Frame")
-notifFrame.Name                  = "NotifFrame"
-notifFrame.AnchorPoint           = Vector2.new(1, 1)
-notifFrame.Size                  = UDim2.new(0, CFG.NOTIF_WIDTH, 0, CFG.NOTIF_HEIGHT)
-notifFrame.Position              = UDim2.new(1, CFG.NOTIF_WIDTH + CFG.NOTIF_MARGIN, 1, -CFG.NOTIF_MARGIN)
-notifFrame.BackgroundColor3      = Color3.fromRGB(10, 10, 12)
-notifFrame.BackgroundTransparency = 0.08
-notifFrame.BorderSizePixel       = 0
-notifFrame.Visible               = false
-notifFrame.ZIndex                = 20
-notifFrame.Parent                = notifGui
+local NOTIF_GAP  = 8   -- vertical gap between stacked cards
+local MAX_NOTIFS = 5   -- oldest card is removed if the stack exceeds this
 
-local notifCorner = Instance.new("UICorner")
-notifCorner.CornerRadius = UDim.new(0, 10)
-notifCorner.Parent = notifFrame
+-- Stack: index 1 = bottom (newest), index n = top (oldest)
+local notifStack = {}
 
-local notifStroke = Instance.new("UIStroke")
-notifStroke.Color        = CFG.BG_BORDER
-notifStroke.Thickness    = 1.5
-notifStroke.Transparency = 0.2
-notifStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-notifStroke.Parent = notifFrame
+local function notifSlotY(slot: number): number
+        -- slot 1 = -MARGIN (bottom), slot 2 = one step up, etc.
+        return -(CFG.NOTIF_MARGIN + (slot - 1) * (CFG.NOTIF_HEIGHT + NOTIF_GAP))
+end
 
--- Yellow left accent bar
-local notifAccent = Instance.new("Frame")
-notifAccent.Name                  = "Accent"
-notifAccent.Size                  = UDim2.new(0, 3, 1, -12)
-notifAccent.Position              = UDim2.new(0, 6, 0, 6)
-notifAccent.BackgroundColor3      = CFG.PROMPT_COLOR
-notifAccent.BackgroundTransparency = 0
-notifAccent.BorderSizePixel       = 0
-notifAccent.ZIndex                = 21
-notifAccent.Parent                = notifFrame
+local function repositionStack()
+        for i, entry in notifStack do
+                local y = notifSlotY(i)
+                tw(entry.frame, CFG.NOTIF_SLIDE,
+                        { Position = UDim2.new(1, -CFG.NOTIF_MARGIN, 1, y) },
+                        Enum.EasingStyle.Quint)
+        end
+end
 
-local notifAccentCorner = Instance.new("UICorner")
-notifAccentCorner.CornerRadius = UDim.new(0, 2)
-notifAccentCorner.Parent = notifAccent
+local function buildNotifCard(message: string): Frame
+        local f = Instance.new("Frame")
+        f.Name                   = "Notif"
+        f.AnchorPoint            = Vector2.new(1, 1)
+        f.Size                   = UDim2.new(0, CFG.NOTIF_WIDTH, 0, CFG.NOTIF_HEIGHT)
+        f.BackgroundColor3       = Color3.fromRGB(10, 10, 12)
+        f.BackgroundTransparency = 0.08
+        f.BorderSizePixel        = 0
+        f.ZIndex                 = 20
+        f.Parent                 = notifGui
 
--- Message label (no icon — spans the full card beside the accent bar)
-local notifLabel = Instance.new("TextLabel")
-notifLabel.Name                  = "Label"
-notifLabel.Size                  = UDim2.new(1, -22, 1, 0)
-notifLabel.Position              = UDim2.new(0, 18, 0, 0)
-notifLabel.BackgroundTransparency = 1
-notifLabel.Font                  = CFG.FONT
-notifLabel.TextSize              = 13
-notifLabel.TextColor3            = Color3.fromRGB(220, 220, 235)
-notifLabel.TextXAlignment        = Enum.TextXAlignment.Left
-notifLabel.TextYAlignment        = Enum.TextYAlignment.Center
-notifLabel.TextTruncate          = Enum.TextTruncate.AtEnd
-notifLabel.Text                  = "Command Executed"
-notifLabel.ZIndex                = 21
-notifLabel.Parent                = notifFrame
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 10)
+        corner.Parent = f
 
--- Notification slide-in/out function (bottom-right corner)
-local notifActive = false
-local POS_OUT = UDim2.new(1, CFG.NOTIF_WIDTH + CFG.NOTIF_MARGIN, 1, -CFG.NOTIF_MARGIN) -- off-screen right
-local POS_IN  = UDim2.new(1, -CFG.NOTIF_MARGIN, 1, -CFG.NOTIF_MARGIN)                  -- flush to bottom-right
+        local stroke = Instance.new("UIStroke")
+        stroke.Color           = CFG.BG_BORDER
+        stroke.Thickness       = 1.5
+        stroke.Transparency    = 0.2
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        stroke.Parent          = f
+
+        local accent = Instance.new("Frame")
+        accent.Size                   = UDim2.new(0, 3, 1, -12)
+        accent.Position               = UDim2.new(0, 6, 0, 6)
+        accent.BackgroundColor3       = CFG.PROMPT_COLOR
+        accent.BackgroundTransparency = 0
+        accent.BorderSizePixel        = 0
+        accent.ZIndex                 = 21
+        accent.Parent                 = f
+
+        local accentCorner = Instance.new("UICorner")
+        accentCorner.CornerRadius = UDim.new(0, 2)
+        accentCorner.Parent = accent
+
+        local lbl = Instance.new("TextLabel")
+        lbl.Size                   = UDim2.new(1, -22, 1, 0)
+        lbl.Position               = UDim2.new(0, 18, 0, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Font                   = CFG.FONT
+        lbl.TextSize               = 13
+        lbl.TextColor3             = Color3.fromRGB(220, 220, 235)
+        lbl.TextXAlignment         = Enum.TextXAlignment.Left
+        lbl.TextYAlignment         = Enum.TextYAlignment.Center
+        lbl.TextTruncate           = Enum.TextTruncate.AtEnd
+        lbl.Text                   = message
+        lbl.ZIndex                 = 21
+        lbl.Parent                 = f
+
+        return f
+end
+
+local function dismissEntry(entry)
+        local idx = table.find(notifStack, entry)
+        if not idx then return end
+
+        local exitY = notifSlotY(idx)
+        tw(entry.frame, CFG.NOTIF_SLIDE,
+                { Position = UDim2.new(1, CFG.NOTIF_WIDTH + CFG.NOTIF_MARGIN, 1, exitY) },
+                Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+
+        table.remove(notifStack, idx)
+
+        task.delay(CFG.NOTIF_SLIDE + 0.05, function()
+                entry.frame:Destroy()
+                -- Reflow the remaining cards
+                repositionStack()
+        end)
+end
 
 local function showNotification(message: string)
-        notifLabel.Text    = message
-        notifFrame.Visible = true
-        notifActive        = true
+        -- Cap stack — evict the oldest (top) card immediately
+        if #notifStack >= MAX_NOTIFS then
+                dismissEntry(notifStack[#notifStack])
+        end
 
-        notifFrame.Position = POS_OUT
-        tw(notifFrame, CFG.NOTIF_SLIDE, { Position = POS_IN })
+        local card  = buildNotifCard(message)
+        local entry = { frame = card }
 
+        -- New card always enters at slot 1 (bottom).
+        -- Slide all existing cards up one slot first.
+        for i, e in notifStack do
+                local y = notifSlotY(i + 1)
+                tw(e.frame, CFG.NOTIF_SLIDE,
+                        { Position = UDim2.new(1, -CFG.NOTIF_MARGIN, 1, y) },
+                        Enum.EasingStyle.Quint)
+        end
+
+        -- Insert new entry at the bottom of the stack
+        table.insert(notifStack, 1, entry)
+
+        -- Slide new card in from off-screen right
+        local targetY = notifSlotY(1)
+        card.Position = UDim2.new(1, CFG.NOTIF_WIDTH + CFG.NOTIF_MARGIN, 1, targetY)
+        tw(card, CFG.NOTIF_SLIDE, { Position = UDim2.new(1, -CFG.NOTIF_MARGIN, 1, targetY) },
+                Enum.EasingStyle.Quint)
+
+        -- Auto-dismiss after duration
         task.delay(CFG.NOTIF_DURATION, function()
-                if not notifActive then return end
-                tw(notifFrame, CFG.NOTIF_SLIDE, { Position = POS_OUT },
-                        Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-                task.delay(CFG.NOTIF_SLIDE, function()
-                        notifFrame.Visible = false
-                        notifActive = false
-                end)
+                dismissEntry(entry)
         end)
 end
 
