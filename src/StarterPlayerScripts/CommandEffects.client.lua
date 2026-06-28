@@ -99,9 +99,19 @@ local function calcHold(text: string): number
         return math.clamp(words * 0.45, 4, 10)
 end
 
--- ─── SM ───────────────────────────────────────────────────────────────────────
+-- ─── SM queue ─────────────────────────────────────────────────────────────────
+-- If a second SM arrives while one is still displayed, it waits until the first
+-- finishes before playing. Messages never overlap or interrupt each other.
 
-local function showSM(text: string)
+local smQueue:  { string } = {}
+local smBusy               = false
+
+local function processSmQueue()
+        if smBusy or #smQueue == 0 then return end
+        smBusy = true
+
+        local text = table.remove(smQueue, 1)
+
         smBody.Text               = text
         smHeader.TextTransparency = 1
         smBody.TextTransparency   = 1
@@ -123,8 +133,15 @@ local function showSM(text: string)
                         smBody.Visible            = false
                         smBody.TextTransparency   = 0
                         blur.Size                 = 0
+                        smBusy = false
+                        processSmQueue()   -- play next queued SM if any
                 end)
         end)
+end
+
+local function showSM(text: string)
+        table.insert(smQueue, text)
+        processSmQueue()
 end
 
 -- ─── IM ───────────────────────────────────────────────────────────────────────

@@ -958,6 +958,9 @@ local function executeCommand()
 
         CommandRemotes.CommandExecuted:FireServer(cmdName, args)
 
+        -- Fire success notification immediately on the client — no server round-trip needed.
+        showNotification("✓  Command Executed")
+
         closeBar()
 end
 
@@ -1096,12 +1099,9 @@ end)
 -- Show success/failure messages returned by the server as right-side notifications.
 
 CommandRemotes.CommandFeedback.OnClientEvent:Connect(function(success: boolean, msg: string)
-        if success then
-                showNotification("✓  Command Executed")
-        else
-                if typeof(msg) == "string" then
-                        showNotification("✗  " .. msg)
-                end
+        -- Success is handled immediately in executeCommand — only surface server errors here.
+        if not success and typeof(msg) == "string" then
+                showNotification("✗  " .. msg)
         end
 end)
 
