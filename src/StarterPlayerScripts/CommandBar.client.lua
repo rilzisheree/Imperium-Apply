@@ -131,14 +131,25 @@ gui.Parent          = PlayerGui
 local panel = Instance.new("Frame")
 panel.Name                  = "Panel"
 panel.AnchorPoint           = Vector2.new(0.5, 0)
-panel.Size                  = UDim2.new(0, CFG.BAR_WIDTH, 0, CFG.BAR_HEIGHT)
+panel.Size                  = UDim2.new(0, CFG.BAR_WIDTH, 0, 0)
 panel.Position              = UDim2.new(0.5, 0, 0, CFG.BAR_Y_CLOSED)
 panel.BackgroundColor3      = CFG.BG_DARK
 panel.BackgroundTransparency = 1
 panel.BorderSizePixel       = 0
 panel.Visible               = false
 panel.ClipsDescendants      = false
+panel.AutomaticSize         = Enum.AutomaticSize.Y
 panel.Parent                = gui
+
+local panelPadding = Instance.new("UIPadding")
+panelPadding.PaddingTop    = UDim.new(0, 15)
+panelPadding.PaddingBottom = UDim.new(0, 15)
+panelPadding.Parent        = panel
+
+local panelSizeConstraint = Instance.new("UISizeConstraint")
+panelSizeConstraint.MinSize = Vector2.new(CFG.BAR_WIDTH, CFG.BAR_HEIGHT)
+panelSizeConstraint.MaxSize = Vector2.new(CFG.BAR_WIDTH, 200)
+panelSizeConstraint.Parent  = panel
 
 local panelCorner = Instance.new("UICorner")
 panelCorner.CornerRadius = UDim.new(0, CFG.BAR_CORNER)
@@ -170,7 +181,7 @@ accentLineCorner.Parent = accentLine
 
 local promptLabel = Instance.new("TextLabel")
 promptLabel.Name                  = "Prompt"
-promptLabel.Size                  = UDim2.new(0, 32, 1, 0)
+promptLabel.Size                  = UDim2.new(0, 32, 0, 22)
 promptLabel.Position              = UDim2.new(0, 10, 0, 0)
 promptLabel.BackgroundTransparency = 1
 promptLabel.Font                  = CFG.FONT
@@ -187,7 +198,7 @@ promptLabel.Parent                = panel
 
 local inputBox = Instance.new("TextBox")
 inputBox.Name                   = "Input"
-inputBox.Size                   = UDim2.new(1, -48, 1, 0)
+inputBox.Size                   = UDim2.new(1, -48, 0, 22)
 inputBox.Position               = UDim2.new(0, 42, 0, 0)
 inputBox.BackgroundTransparency = 1
 inputBox.BorderSizePixel        = 0
@@ -200,8 +211,10 @@ inputBox.PlaceholderText        = "Enter a command…"
 inputBox.PlaceholderColor3      = CFG.PLACEHOLDER_COLOR
 inputBox.Text                   = ""
 inputBox.TextXAlignment         = Enum.TextXAlignment.Left
-inputBox.TextYAlignment         = Enum.TextYAlignment.Center
-inputBox.MultiLine              = false
+inputBox.TextYAlignment         = Enum.TextYAlignment.Top
+inputBox.MultiLine              = true
+inputBox.TextWrapped            = true
+inputBox.AutomaticSize          = Enum.AutomaticSize.Y
 inputBox.ZIndex                 = 3
 inputBox.Parent                 = panel
 
@@ -922,13 +935,13 @@ end)
 
 inputBox:GetPropertyChangedSignal("Text"):Connect(function()
         if not isOpen then return end
-        -- Roblox inserts a literal \t when Tab is pressed inside a TextBox.
-        -- Strip it immediately so it never appears in the input.
-        if inputBox.Text:find("\t") then
-                local cleaned = inputBox.Text:gsub("\t", "")
+        local text = inputBox.Text
+        -- Strip tab characters (inserted by Tab key) and newlines (inserted by Enter in MultiLine mode)
+        if text:find("[\t\n]") then
+                local cleaned = text:gsub("[\t\n]", "")
                 inputBox.Text = cleaned
                 inputBox.CursorPosition = #cleaned + 1
-                return  -- the assignment above will re-fire this signal cleanly
+                return
         end
         updateAutocomplete()
 end)
@@ -955,6 +968,11 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         end
 
         if not inputFocused then return end
+
+        if input.KeyCode == Enum.KeyCode.Return then
+                executeCommand()
+                return
+        end
 
         -- Up/Down: navigate player suggestions when the panel is open, else scroll history
         if input.KeyCode == Enum.KeyCode.Up then
