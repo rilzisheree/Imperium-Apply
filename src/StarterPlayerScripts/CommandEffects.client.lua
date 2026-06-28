@@ -23,8 +23,8 @@ end
 
 -- ─── Font faces ───────────────────────────────────────────────────────────────
 
-local FONT_ITALIC = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Medium, Enum.FontStyle.Italic)
-local FONT_REG    = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+local FONT_SERIF      = Font.fromEnum(Enum.Font.TimesNewRoman)
+local FONT_SERIF_ITAL = Font.new("rbxasset://fonts/families/TimesNewRoman.json", Enum.FontWeight.Regular, Enum.FontStyle.Italic)
 
 -- ─── Root ScreenGui ───────────────────────────────────────────────────────────
 
@@ -89,13 +89,13 @@ end
 local smHeader = Instance.new("TextLabel")
 smHeader.Name                   = "SMHeader"
 smHeader.AnchorPoint            = Vector2.new(0.5, 1)
-smHeader.Position               = UDim2.new(0.5, 0, 0.16, -4)
+smHeader.Position               = UDim2.new(0.5, 0, 0.11, -4)
 smHeader.Size                   = UDim2.new(0.75, 0, 0, 38)
 smHeader.BackgroundTransparency = 1
 smHeader.TextColor3             = Color3.fromRGB(255, 255, 255)
 smHeader.TextTransparency       = 1
 smHeader.TextSize               = 36
-smHeader.FontFace               = FONT_ITALIC
+smHeader.FontFace               = FONT_SERIF_ITAL
 smHeader.Text                   = "[ Server Message ]"
 smHeader.TextXAlignment         = Enum.TextXAlignment.Center
 smHeader.TextYAlignment         = Enum.TextYAlignment.Center
@@ -106,13 +106,13 @@ smHeader.Parent                 = gui
 local smBody = Instance.new("TextLabel")
 smBody.Name                   = "SMBody"
 smBody.AnchorPoint            = Vector2.new(0.5, 0)
-smBody.Position               = UDim2.new(0.5, 0, 0.16, 4)
+smBody.Position               = UDim2.new(0.5, 0, 0.11, 4)
 smBody.Size                   = UDim2.new(0.70, 0, 0, 110)
 smBody.BackgroundTransparency = 1
 smBody.TextColor3             = Color3.fromRGB(255, 255, 255)
 smBody.TextTransparency       = 1
 smBody.TextSize               = 28
-smBody.FontFace               = FONT_REG
+smBody.FontFace               = FONT_SERIF
 smBody.Text                   = ""
 smBody.TextWrapped            = true
 smBody.TextScaled             = false
@@ -127,13 +127,13 @@ smBody.Parent                 = gui
 local imLabel = Instance.new("TextLabel")
 imLabel.Name                   = "IMLabel"
 imLabel.AnchorPoint            = Vector2.new(0.5, 0.5)
-imLabel.Position               = UDim2.new(0.5, 0, 0.68, 0)
+imLabel.Position               = UDim2.new(0.5, 0, 0.64, 0)
 imLabel.Size                   = UDim2.new(0.50, 0, 0, 100)
 imLabel.BackgroundTransparency = 1
 imLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
 imLabel.TextTransparency       = 1
 imLabel.TextSize               = 27
-imLabel.FontFace               = FONT_REG
+imLabel.FontFace               = FONT_SERIF
 imLabel.Text                   = ""
 imLabel.TextWrapped            = true
 imLabel.TextXAlignment         = Enum.TextXAlignment.Center
