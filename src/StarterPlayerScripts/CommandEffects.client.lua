@@ -6,8 +6,6 @@
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
-local RunService        = game:GetService("RunService")
-local TextService       = game:GetService("TextService")
 local Lighting          = game:GetService("Lighting")
 
 local LocalPlayer = Players.LocalPlayer
@@ -38,10 +36,8 @@ end
 
 -- ── Tween helper ───────────────────────────────────────────────────────────────
 
-local function tw(target, time, props, style, dir)
-	style = style or Enum.EasingStyle.Quint
-	dir   = dir   or Enum.EasingDirection.Out
-	TweenService:Create(target, TweenInfo.new(time, style, dir), props):Play()
+local function tw(target, time, props)
+	TweenService:Create(target, TweenInfo.new(time, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), props):Play()
 end
 
 -- ── Root ScreenGui ─────────────────────────────────────────────────────────────
@@ -126,104 +122,23 @@ local function calcHold(text: string): number
 	return math.clamp(words * 0.45, 4, 10)
 end
 
--- ── Per-character bounce ───────────────────────────────────────────────────────
--- Creates individual TextLabels for each character of `label`, positioned to
--- match the label's location.  Each letter hops up independently with a phase
--- offset, giving a wave-bounce effect.
---
--- Uses math.max(0, sin) so characters only go UP, then snap back to baseline —
--- a sharp hop rather than a smooth drift.
---
--- Call the returned stop() before doing any fade-out tween on `label`.
+-- ── Glow helper ────────────────────────────────────────────────────────────────
+-- Adds a UIStroke to each label so the text glows in the message colour.
+-- Returns a cleanup function that removes the strokes.
 
-local BOUNCE_AMP   = 9     -- pixels each letter jumps upward
-local BOUNCE_SPEED = 3.2   -- radians/sec (higher = faster bouncing)
-local BOUNCE_PHASE = 0.38  -- radians of phase between adjacent characters
-
-local function startCharacterBounce(label: TextLabel): () -> ()
-	local text     = label.Text
-	local font     = label.Font
-	local fontSize = label.TextSize
-	local color    = label.TextColor3
-	local zindex   = label.ZIndex
-
-	if #text == 0 then return function() end end
-
-	-- Measure each character's pixel width
-	local chars      = {}
-	local totalWidth = 0
-	for i = 1, #text do
-		local ch = text:sub(i, i)
-		local w  = TextService:GetTextSize(ch, fontSize, font, Vector2.new(9999, 9999)).X
-		w = math.max(w, 5)   -- spaces can report 0 — give them at least 5px
-		table.insert(chars, { ch = ch, w = w })
-		totalWidth += w
+local function applyGlow(color: Color3, labels: { TextLabel }): () -> ()
+	local strokes = {}
+	for _, lbl in labels do
+		local s = Instance.new("UIStroke")
+		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual  -- applies to text, not border
+		s.Color           = color
+		s.Thickness       = 3
+		s.Transparency    = 0.15
+		s.Parent          = lbl
+		table.insert(strokes, s)
 	end
-
-	local EXTRA_H = BOUNCE_AMP + 6  -- extra height so letters don't clip at the top
-
-	-- Container frame: same anchor + position as the original label,
-	-- width = measured text width so it's perfectly centred.
-	local container = Instance.new("Frame")
-	container.AnchorPoint      = label.AnchorPoint
-	container.Position         = label.Position
-	container.Size             = UDim2.new(0, totalWidth, 0, fontSize + EXTRA_H * 2)
-	container.BackgroundTransparency = 1
-	container.ClipsDescendants = false
-	container.ZIndex           = zindex
-	container.Parent           = gui
-
-	-- UIListLayout handles horizontal spacing — no manual X math needed
-	local layout = Instance.new("UIListLayout", container)
-	layout.FillDirection = Enum.FillDirection.Horizontal
-	layout.SortOrder     = Enum.SortOrder.LayoutOrder
-	layout.Padding       = UDim.new(0, 0)
-
-	-- Build a wrapper Frame per character; the TextLabel inside animates in Y
-	local charLabels = {}
-	for i, c in ipairs(chars) do
-		local wrapper = Instance.new("Frame")
-		wrapper.Size                   = UDim2.new(0, c.w, 1, 0)
-		wrapper.BackgroundTransparency = 1
-		wrapper.ClipsDescendants       = false
-		wrapper.LayoutOrder            = i
-		wrapper.Parent                 = container
-
-		local lbl = Instance.new("TextLabel")
-		lbl.Size              = UDim2.new(1, 0, 0, fontSize)
-		lbl.Position          = UDim2.new(0, 0, 0.5, 0)
-		lbl.AnchorPoint       = Vector2.new(0, 0.5)
-		lbl.BackgroundTransparency = 1
-		lbl.Text              = c.ch
-		lbl.Font              = font
-		lbl.TextSize          = fontSize
-		lbl.TextColor3        = color
-		lbl.TextTransparency  = 0
-		lbl.ZIndex            = zindex + 1
-		lbl.Parent            = wrapper
-
-		charLabels[i] = lbl
-	end
-
-	-- Hide the original label (char labels are now visually identical)
-	label.TextTransparency = 1
-
-	-- Animate: each letter hops on a sine wave, positive only → jumps up only
-	local t    = 0
-	local conn = RunService.RenderStepped:Connect(function(dt)
-		t += dt
-		for i, lbl in ipairs(charLabels) do
-			local phase = (i - 1) * BOUNCE_PHASE
-			local jump  = math.max(0, math.sin(t * BOUNCE_SPEED + phase)) * BOUNCE_AMP
-			lbl.Position = UDim2.new(0, 0, 0.5, -jump)
-		end
-	end)
-
-	-- stop() — call before any fade-out tween on the original label
 	return function()
-		conn:Disconnect()
-		container:Destroy()
-		label.TextTransparency = 0   -- restore so the caller's fade-out works
+		for _, s in strokes do s:Destroy() end
 	end
 end
 
@@ -251,24 +166,14 @@ local function processSmQueue()
 	smBody.Visible            = true
 	blur.Size                 = 0
 
+	local removeGlow = colorName and applyGlow(color, { smHeader, smBody }) or nil
+
 	tw(blur,     0.6, { Size = 5 })
 	tw(smHeader, 0.6, { TextTransparency = 0 })
 	tw(smBody,   0.6, { TextTransparency = 0 })
 
-	local stopHeader, stopBody
-
-	if colorName then
-		-- Wait for fade-in to finish before swapping to per-character labels
-		task.delay(0.62, function()
-			stopHeader = startCharacterBounce(smHeader)
-			stopBody   = startCharacterBounce(smBody)
-		end)
-	end
-
 	task.delay(0.6 + hold, function()
-		-- Restore originals BEFORE tweening them out
-		if stopHeader then stopHeader() end
-		if stopBody   then stopBody()   end
+		if removeGlow then removeGlow() end
 
 		tw(blur,     0.5, { Size = 0 })
 		tw(smHeader, 0.5, { TextTransparency = 1 })
@@ -305,19 +210,12 @@ local function showIM(text: string, colorName: string?)
 	imLabel.TextTransparency = 1
 	imLabel.Visible          = true
 
+	local removeGlow = colorName and applyGlow(color, { imLabel }) or nil
+
 	tw(imLabel, 0.6, { TextTransparency = 0 })
 
-	local stopIM
-
-	if colorName then
-		task.delay(0.62, function()
-			stopIM = startCharacterBounce(imLabel)
-		end)
-	end
-
 	task.delay(0.6 + hold, function()
-		if stopIM then stopIM() end
-
+		if removeGlow then removeGlow() end
 		tw(imLabel, 0.5, { TextTransparency = 1 })
 		task.delay(0.55, function()
 			imLabel.Visible          = false
