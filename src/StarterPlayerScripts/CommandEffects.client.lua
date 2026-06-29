@@ -7,6 +7,7 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
 local RunService        = game:GetService("RunService")
+local TextService       = game:GetService("TextService")
 local Lighting          = game:GetService("Lighting")
 
 local LocalPlayer = Players.LocalPlayer
@@ -125,120 +126,105 @@ local function calcHold(text: string): number
 	return math.clamp(words * 0.45, 4, 10)
 end
 
--- ── Breeze animation ───────────────────────────────────────────────────────────
--- Gently oscillates a label around its base position using sine waves.
--- Returns a stop() function that resets the label and disconnects the loop.
+-- ── Per-character bounce ───────────────────────────────────────────────────────
+-- Creates individual TextLabels for each character of `label`, positioned to
+-- match the label's location.  Each letter hops up independently with a phase
+-- offset, giving a wave-bounce effect.
 --
--- opts:
---   ampX, ampY  — pixel amplitude of the oscillation (default 0, 3)
---   speedX, speedY — radians/sec for X and Y waves (default 0.7, 1.1)
---   phaseX, phaseY — starting phase offset in radians
+-- Uses math.max(0, sin) so characters only go UP, then snap back to baseline —
+-- a sharp hop rather than a smooth drift.
+--
+-- Call the returned stop() before doing any fade-out tween on `label`.
 
-local function startBreeze(label: TextLabel, opts: { [string]: number }?)
-	opts = opts or {}
-	local ampX   = opts.ampX   or 0
-	local ampY   = opts.ampY   or 3
-	local speedX = opts.speedX or 0.7
-	local speedY = opts.speedY or 1.1
-	local phaseX = opts.phaseX or 0
-	local phaseY = opts.phaseY or 0
+local BOUNCE_AMP   = 9     -- pixels each letter jumps upward
+local BOUNCE_SPEED = 3.2   -- radians/sec (higher = faster bouncing)
+local BOUNCE_PHASE = 0.38  -- radians of phase between adjacent characters
 
-	local base = label.Position
+local function startCharacterBounce(label: TextLabel): () -> ()
+	local text     = label.Text
+	local font     = label.Font
+	local fontSize = label.TextSize
+	local color    = label.TextColor3
+	local zindex   = label.ZIndex
+
+	if #text == 0 then return function() end end
+
+	-- Measure each character's pixel width
+	local chars      = {}
+	local totalWidth = 0
+	for i = 1, #text do
+		local ch = text:sub(i, i)
+		local w  = TextService:GetTextSize(ch, fontSize, font, Vector2.new(9999, 9999)).X
+		w = math.max(w, 5)   -- spaces can report 0 — give them at least 5px
+		table.insert(chars, { ch = ch, w = w })
+		totalWidth += w
+	end
+
+	local EXTRA_H = BOUNCE_AMP + 6  -- extra height so letters don't clip at the top
+
+	-- Container frame: same anchor + position as the original label,
+	-- width = measured text width so it's perfectly centred.
+	local container = Instance.new("Frame")
+	container.AnchorPoint      = label.AnchorPoint
+	container.Position         = label.Position
+	container.Size             = UDim2.new(0, totalWidth, 0, fontSize + EXTRA_H * 2)
+	container.BackgroundTransparency = 1
+	container.ClipsDescendants = false
+	container.ZIndex           = zindex
+	container.Parent           = gui
+
+	-- UIListLayout handles horizontal spacing — no manual X math needed
+	local layout = Instance.new("UIListLayout", container)
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.SortOrder     = Enum.SortOrder.LayoutOrder
+	layout.Padding       = UDim.new(0, 0)
+
+	-- Build a wrapper Frame per character; the TextLabel inside animates in Y
+	local charLabels = {}
+	for i, c in ipairs(chars) do
+		local wrapper = Instance.new("Frame")
+		wrapper.Size                   = UDim2.new(0, c.w, 1, 0)
+		wrapper.BackgroundTransparency = 1
+		wrapper.ClipsDescendants       = false
+		wrapper.LayoutOrder            = i
+		wrapper.Parent                 = container
+
+		local lbl = Instance.new("TextLabel")
+		lbl.Size              = UDim2.new(1, 0, 0, fontSize)
+		lbl.Position          = UDim2.new(0, 0, 0.5, 0)
+		lbl.AnchorPoint       = Vector2.new(0, 0.5)
+		lbl.BackgroundTransparency = 1
+		lbl.Text              = c.ch
+		lbl.Font              = font
+		lbl.TextSize          = fontSize
+		lbl.TextColor3        = color
+		lbl.TextTransparency  = 0
+		lbl.ZIndex            = zindex + 1
+		lbl.Parent            = wrapper
+
+		charLabels[i] = lbl
+	end
+
+	-- Hide the original label (char labels are now visually identical)
+	label.TextTransparency = 1
+
+	-- Animate: each letter hops on a sine wave, positive only → jumps up only
 	local t    = 0
-
 	local conn = RunService.RenderStepped:Connect(function(dt)
 		t += dt
-		local ox = math.sin(t * speedX + phaseX) * ampX
-		local oy = math.sin(t * speedY + phaseY) * ampY
-		label.Position = UDim2.new(
-			base.X.Scale, base.X.Offset + ox,
-			base.Y.Scale, base.Y.Offset + oy
-		)
+		for i, lbl in ipairs(charLabels) do
+			local phase = (i - 1) * BOUNCE_PHASE
+			local jump  = math.max(0, math.sin(t * BOUNCE_SPEED + phase)) * BOUNCE_AMP
+			lbl.Position = UDim2.new(0, 0, 0.5, -jump)
+		end
 	end)
 
+	-- stop() — call before any fade-out tween on the original label
 	return function()
 		conn:Disconnect()
-		label.Position = base
+		container:Destroy()
+		label.TextTransparency = 0   -- restore so the caller's fade-out works
 	end
-end
-
--- ── Screen-edge colour glow ────────────────────────────────────────────────────
--- SM = all 4 edges + stronger tint. IM = left/right only + lighter tint.
-
-local function showColorVFX(color: Color3, holdDuration: number, allSides: boolean)
-	local FADE_IN  = 0.55
-	local FADE_OUT = 0.55
-	local peakTrans = allSides and 0.42 or 0.58
-
-	local vigData = allSides and {
-		{ UDim2.new(1, 0, 0.38, 0), UDim2.new(0,    0, 0,    0), 90  },
-		{ UDim2.new(1, 0, 0.38, 0), UDim2.new(0,    0, 0.62, 0), 270 },
-		{ UDim2.new(0.28, 0, 1, 0), UDim2.new(0,    0, 0,    0), 0   },
-		{ UDim2.new(0.28, 0, 1, 0), UDim2.new(0.72, 0, 0,    0), 180 },
-	} or {
-		{ UDim2.new(0.22, 0, 1, 0), UDim2.new(0,    0, 0,    0), 0   },
-		{ UDim2.new(0.22, 0, 1, 0), UDim2.new(0.78, 0, 0,    0), 180 },
-	}
-
-	local frames = {}
-	for _, data in vigData do
-		local f = Instance.new("Frame")
-		f.Size                   = data[1]
-		f.Position               = data[2]
-		f.BackgroundColor3       = color
-		f.BackgroundTransparency = 1
-		f.BorderSizePixel        = 0
-		f.ZIndex                 = 8
-		f.Parent                 = gui
-
-		local g = Instance.new("UIGradient")
-		g.Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0,    0),
-			NumberSequenceKeypoint.new(0.45, 0.55),
-			NumberSequenceKeypoint.new(1,    1),
-		})
-		g.Rotation = data[3]
-		g.Parent   = f
-
-		table.insert(frames, f)
-		tw(f, FADE_IN, { BackgroundTransparency = peakTrans })
-	end
-
-	-- Brief initial flash pulse
-	task.delay(FADE_IN * 0.35, function()
-		for _, f in frames do
-			tw(f, 0.12, { BackgroundTransparency = peakTrans - 0.12 },
-				Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		end
-		task.delay(0.14, function()
-			for _, f in frames do
-				tw(f, 0.25, { BackgroundTransparency = peakTrans },
-					Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-			end
-		end)
-	end)
-
-	-- Subtle colour correction tint
-	local tintStrength = allSides and 0.12 or 0.06
-	local cc = Instance.new("ColorCorrectionEffect")
-	cc.TintColor = Color3.new(1, 1, 1)
-	cc.Parent = Lighting
-	tw(cc, FADE_IN, { TintColor = Color3.new(
-		1 - tintStrength + tintStrength * color.R,
-		1 - tintStrength + tintStrength * color.G,
-		1 - tintStrength + tintStrength * color.B
-	)})
-
-	task.delay(FADE_IN + holdDuration, function()
-		for _, f in frames do
-			tw(f, FADE_OUT, { BackgroundTransparency = 1 })
-		end
-		tw(cc, FADE_OUT, { TintColor = Color3.new(1, 1, 1) })
-		task.delay(FADE_OUT + 0.15, function()
-			for _, f in frames do if f.Parent then f:Destroy() end end
-			cc:Destroy()
-		end)
-	end)
 end
 
 -- ── SM queue ───────────────────────────────────────────────────────────────────
@@ -272,21 +258,15 @@ local function processSmQueue()
 	local stopHeader, stopBody
 
 	if colorName then
-		showColorVFX(color, hold, true)
-
-		-- Header: gentle up/down drift
-		stopHeader = startBreeze(smHeader, {
-			ampY = 3, speedY = 0.9, phaseY = 0,
-			ampX = 1, speedX = 0.5, phaseX = 1.2,
-		})
-		-- Body: same direction but slightly different timing so they feel independent
-		stopBody = startBreeze(smBody, {
-			ampY = 2.5, speedY = 1.05, phaseY = 0.8,
-			ampX = 1,   speedX = 0.6,  phaseX = 0.4,
-		})
+		-- Wait for fade-in to finish before swapping to per-character labels
+		task.delay(0.62, function()
+			stopHeader = startCharacterBounce(smHeader)
+			stopBody   = startCharacterBounce(smBody)
+		end)
 	end
 
 	task.delay(0.6 + hold, function()
+		-- Restore originals BEFORE tweening them out
 		if stopHeader then stopHeader() end
 		if stopBody   then stopBody()   end
 
@@ -330,13 +310,9 @@ local function showIM(text: string, colorName: string?)
 	local stopIM
 
 	if colorName then
-		showColorVFX(color, hold, false)
-
-		-- IM: slow circular drift (X + Y) — feels like floating/swaying
-		stopIM = startBreeze(imLabel, {
-			ampX = 4,   speedX = 0.55, phaseX = 0,
-			ampY = 3,   speedY = 0.80, phaseY = math.pi / 2,
-		})
+		task.delay(0.62, function()
+			stopIM = startCharacterBounce(imLabel)
+		end)
 	end
 
 	task.delay(0.6 + hold, function()
