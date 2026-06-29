@@ -132,8 +132,8 @@ local function applyGlow(color: Color3, labels: { TextLabel }): () -> ()
                 local s = Instance.new("UIStroke")
                 s.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual  -- applies to text, not border
                 s.Color           = color
-                s.Thickness       = 1.5
-                s.Transparency    = 0.55
+                s.Thickness       = 1
+                s.Transparency    = 0.92
                 s.Parent          = lbl
                 table.insert(strokes, s)
         end
