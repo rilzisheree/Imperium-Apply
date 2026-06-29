@@ -44,6 +44,24 @@ local function fail(player: Player, msg: string)
         CommandRemotes.CommandFeedback:FireClient(player, false, msg)
 end
 
+-- ─── Optional colour keyword ───────────────────────────────────────────────────
+-- If the last word of a message exactly matches one of these colour names,
+-- it is stripped from the message text and forwarded as a separate argument.
+
+local COLOUR_NAMES = {
+        red=true, blue=true, green=true, yellow=true, orange=true,
+        purple=true, pink=true, white=true, cyan=true, lime=true,
+}
+
+local function stripColour(msg: string): (string, string?)
+        local lastWord = msg:match("(%S+)%s*$")
+        if lastWord and COLOUR_NAMES[lastWord:lower()] then
+                local stripped = msg:match("^(.-)%s*%S+%s*$") or ""
+                return stripped, lastWord:lower()
+        end
+        return msg, nil
+end
+
 -- ─── Player resolution ─────────────────────────────────────────────────────────
 
 local function resolvePlayer(executor: Player, name: string): Player?
@@ -70,23 +88,25 @@ end
 
 local HANDLERS = {}
 
--- sm <message>
+-- sm <message> [colour]
 HANDLERS["sm"] = function(executor, args)
-        local msg = joinArgs(args, 1)
-        if msg == "" then
-                fail(executor, "Usage: sm <message>")
+        local raw = joinArgs(args, 1)
+        if raw == "" then
+                fail(executor, "Usage: sm <message> [colour]")
                 return
         end
+        local msg, colour = stripColour(raw)
+        if msg == "" then msg = raw  colour = nil end   -- whole string was the colour word
         for _, player in Players:GetPlayers() do
-                CommandRemotes.SM:FireClient(player, msg)
+                CommandRemotes.SM:FireClient(player, msg, colour)
         end
-        ok(executor, 'Server message sent: "' .. msg .. '"')
+        ok(executor, 'Server message sent: "' .. msg .. '"' .. (colour and " (" .. colour .. ")" or ""))
 end
 
--- im <player> <message>
+-- im <player> <message> [colour]
 HANDLERS["im"] = function(executor, args)
         if #args < 2 then
-                fail(executor, "Usage: im <player> <message>")
+                fail(executor, "Usage: im <player> <message> [colour]")
                 return
         end
         local target = resolvePlayer(executor, args[1])
@@ -94,13 +114,15 @@ HANDLERS["im"] = function(executor, args)
                 fail(executor, 'Player "' .. args[1] .. '" not found.')
                 return
         end
-        local msg = joinArgs(args, 2)
-        if msg == "" then
-                fail(executor, "Usage: im <player> <message>")
+        local raw = joinArgs(args, 2)
+        if raw == "" then
+                fail(executor, "Usage: im <player> <message> [colour]")
                 return
         end
-        CommandRemotes.IM:FireClient(target, msg)
-        ok(executor, 'Individual message sent to ' .. target.DisplayName .. ': "' .. msg .. '"')
+        local msg, colour = stripColour(raw)
+        if msg == "" then msg = raw  colour = nil end
+        CommandRemotes.IM:FireClient(target, msg, colour)
+        ok(executor, 'Individual message sent to ' .. target.DisplayName .. ': "' .. msg .. '"' .. (colour and " (" .. colour .. ")" or ""))
 end
 
 -- anxiety <player> <level>

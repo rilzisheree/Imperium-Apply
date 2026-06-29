@@ -1,7 +1,7 @@
 --[[
-        CommandEffects.client.lua
-        LocalScript — StarterPlayerScripts
---]]
+	CommandEffects.client.lua
+	LocalScript — StarterPlayerScripts
+]]
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -11,13 +11,37 @@ local Lighting          = game:GetService("Lighting")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 
--- ─── Tween helper ─────────────────────────────────────────────────────────────
+-- ── Colour map ─────────────────────────────────────────────────────────────────
+-- Matched against the optional last word sent by the server.
 
-local function tw(target, time, props)
-        TweenService:Create(target, TweenInfo.new(time, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), props):Play()
+local COLOR_MAP = {
+	red    = Color3.fromRGB(255,  90,  90),
+	blue   = Color3.fromRGB(110, 160, 255),
+	green  = Color3.fromRGB( 90, 220,  90),
+	yellow = Color3.fromRGB(255, 230,  80),
+	orange = Color3.fromRGB(255, 160,  60),
+	purple = Color3.fromRGB(190, 110, 255),
+	pink   = Color3.fromRGB(255, 140, 210),
+	white  = Color3.fromRGB(255, 255, 255),
+	cyan   = Color3.fromRGB( 90, 225, 255),
+	lime   = Color3.fromRGB(140, 255,  90),
+}
+local DEFAULT_COLOR = Color3.fromRGB(255, 255, 255)
+
+local function resolveColor(name: string?): Color3
+	if name and COLOR_MAP[name:lower()] then
+		return COLOR_MAP[name:lower()]
+	end
+	return DEFAULT_COLOR
 end
 
--- ─── Root ScreenGui ───────────────────────────────────────────────────────────
+-- ── Tween helper ───────────────────────────────────────────────────────────────
+
+local function tw(target, time, props)
+	TweenService:Create(target, TweenInfo.new(time, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), props):Play()
+end
+
+-- ── Root ScreenGui ─────────────────────────────────────────────────────────────
 
 local gui = Instance.new("ScreenGui")
 gui.Name           = "CommandEffects"
@@ -26,13 +50,13 @@ gui.ResetOnSpawn   = false
 gui.IgnoreGuiInset = true
 gui.Parent         = PlayerGui
 
--- ─── Blur (SM only) ───────────────────────────────────────────────────────────
+-- ── Blur (SM only) ─────────────────────────────────────────────────────────────
 
 local blur = Instance.new("BlurEffect")
 blur.Size   = 0
 blur.Parent = Lighting
 
--- ─── SM labels ────────────────────────────────────────────────────────────────
+-- ── SM labels ──────────────────────────────────────────────────────────────────
 
 local smHeader = Instance.new("TextLabel")
 smHeader.Name                   = "SMHeader"
@@ -40,7 +64,7 @@ smHeader.AnchorPoint            = Vector2.new(0.5, 1)
 smHeader.Position               = UDim2.new(0.5, 0, 0.11, -4)
 smHeader.Size                   = UDim2.new(0.75, 0, 0, 38)
 smHeader.BackgroundTransparency = 1
-smHeader.TextColor3             = Color3.fromRGB(255, 255, 255)
+smHeader.TextColor3             = DEFAULT_COLOR
 smHeader.TextTransparency       = 0
 smHeader.TextSize               = 36
 smHeader.Font                   = Enum.Font.Merriweather
@@ -58,7 +82,7 @@ smBody.Position               = UDim2.new(0.5, 0, 0.11, 4)
 smBody.Size                   = UDim2.new(0.70, 0, 0, 0)
 smBody.AutomaticSize          = Enum.AutomaticSize.Y
 smBody.BackgroundTransparency = 1
-smBody.TextColor3             = Color3.fromRGB(255, 255, 255)
+smBody.TextColor3             = DEFAULT_COLOR
 smBody.TextTransparency       = 0
 smBody.TextSize               = 28
 smBody.Font                   = Enum.Font.Merriweather
@@ -71,7 +95,7 @@ smBody.ZIndex                 = 10
 smBody.Visible                = false
 smBody.Parent                 = gui
 
--- ─── IM label ─────────────────────────────────────────────────────────────────
+-- ── IM label ───────────────────────────────────────────────────────────────────
 
 local imLabel = Instance.new("TextLabel")
 imLabel.Name                   = "IMLabel"
@@ -80,7 +104,7 @@ imLabel.Position               = UDim2.new(0.5, 0, 0.66, 0)
 imLabel.Size                   = UDim2.new(0.50, 0, 0, 0)
 imLabel.AutomaticSize          = Enum.AutomaticSize.Y
 imLabel.BackgroundTransparency = 1
-imLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
+imLabel.TextColor3             = DEFAULT_COLOR
 imLabel.TextTransparency       = 0
 imLabel.TextSize               = 25
 imLabel.Font                   = Enum.Font.Merriweather
@@ -92,94 +116,98 @@ imLabel.ZIndex                 = 10
 imLabel.Visible                = false
 imLabel.Parent                 = gui
 
--- ─── Hold time ────────────────────────────────────────────────────────────────
+-- ── Hold time ──────────────────────────────────────────────────────────────────
 
 local function calcHold(text: string): number
-        local words = select(2, text:gsub("%S+", "")) + 1
-        return math.clamp(words * 0.45, 4, 10)
+	local words = select(2, text:gsub("%S+", "")) + 1
+	return math.clamp(words * 0.45, 4, 10)
 end
 
--- ─── SM queue ─────────────────────────────────────────────────────────────────
--- If a second SM arrives while one is still displayed, it waits until the first
--- finishes before playing. Messages never overlap or interrupt each other.
+-- ── SM queue ───────────────────────────────────────────────────────────────────
+-- Each entry: { text: string, color: Color3 }
 
-local smQueue:  { string } = {}
-local smBusy               = false
+local smQueue: { { text: string, color: Color3 } } = {}
+local smBusy = false
 
 local function processSmQueue()
-        if smBusy or #smQueue == 0 then return end
-        smBusy = true
+	if smBusy or #smQueue == 0 then return end
+	smBusy = true
 
-        local text = table.remove(smQueue, 1)
+	local entry = table.remove(smQueue, 1)
+	local text  = entry.text
+	local color = entry.color
 
-        smBody.Text               = text
-        smHeader.TextTransparency = 1
-        smBody.TextTransparency   = 1
-        smHeader.Visible          = true
-        smBody.Visible            = true
-        blur.Size                 = 0
+	smBody.Text               = text
+	smBody.TextColor3         = color
+	smHeader.TextColor3       = color
+	smHeader.TextTransparency = 1
+	smBody.TextTransparency   = 1
+	smHeader.Visible          = true
+	smBody.Visible            = true
+	blur.Size                 = 0
 
-        tw(blur,     0.6, { Size = 5 })
-        tw(smHeader, 0.6, { TextTransparency = 0 })
-        tw(smBody,   0.6, { TextTransparency = 0 })
+	tw(blur,     0.6, { Size = 5 })
+	tw(smHeader, 0.6, { TextTransparency = 0 })
+	tw(smBody,   0.6, { TextTransparency = 0 })
 
-        task.delay(0.6 + calcHold(text), function()
-                tw(blur,     0.5, { Size = 0 })
-                tw(smHeader, 0.5, { TextTransparency = 1 })
-                tw(smBody,   0.5, { TextTransparency = 1 })
-                task.delay(0.55, function()
-                        smHeader.Visible          = false
-                        smHeader.TextTransparency = 0
-                        smBody.Visible            = false
-                        smBody.TextTransparency   = 0
-                        blur.Size                 = 0
-                        smBusy = false
-                        processSmQueue()   -- play next queued SM if any
-                end)
-        end)
+	task.delay(0.6 + calcHold(text), function()
+		tw(blur,     0.5, { Size = 0 })
+		tw(smHeader, 0.5, { TextTransparency = 1 })
+		tw(smBody,   0.5, { TextTransparency = 1 })
+		task.delay(0.55, function()
+			smHeader.Visible          = false
+			smHeader.TextTransparency = 0
+			smBody.Visible            = false
+			smBody.TextTransparency   = 0
+			blur.Size                 = 0
+			smBusy = false
+			processSmQueue()
+		end)
+	end)
 end
 
-local function showSM(text: string)
-        table.insert(smQueue, text)
-        processSmQueue()
+local function showSM(text: string, colorName: string?)
+	table.insert(smQueue, { text = text, color = resolveColor(colorName) })
+	processSmQueue()
 end
 
--- ─── IM ───────────────────────────────────────────────────────────────────────
+-- ── IM ─────────────────────────────────────────────────────────────────────────
 
-local function showIM(text: string)
-        imLabel.Text             = text
-        imLabel.TextTransparency = 1
-        imLabel.Visible          = true
+local function showIM(text: string, colorName: string?)
+	imLabel.Text             = text
+	imLabel.TextColor3       = resolveColor(colorName)
+	imLabel.TextTransparency = 1
+	imLabel.Visible          = true
 
-        tw(imLabel, 0.6, { TextTransparency = 0 })
+	tw(imLabel, 0.6, { TextTransparency = 0 })
 
-        task.delay(0.6 + calcHold(text), function()
-                tw(imLabel, 0.5, { TextTransparency = 1 })
-                task.delay(0.55, function()
-                        imLabel.Visible          = false
-                        imLabel.TextTransparency = 0
-                end)
-        end)
+	task.delay(0.6 + calcHold(text), function()
+		tw(imLabel, 0.5, { TextTransparency = 1 })
+		task.delay(0.55, function()
+			imLabel.Visible          = false
+			imLabel.TextTransparency = 0
+		end)
+	end)
 end
 
--- ─── Remote listeners ─────────────────────────────────────────────────────────
+-- ── Remote listeners ───────────────────────────────────────────────────────────
 
 local CommandRemotes = require(ReplicatedStorage:WaitForChild("CommandRemotes"))
 
 if CommandRemotes.SM then
-        CommandRemotes.SM.OnClientEvent:Connect(function(message: string)
-                if typeof(message) == "string" and message ~= "" then
-                        showSM(message)
-                end
-        end)
+	CommandRemotes.SM.OnClientEvent:Connect(function(message: string, colorName: string?)
+		if typeof(message) == "string" and message ~= "" then
+			showSM(message, colorName)
+		end
+	end)
 end
 
 if CommandRemotes.IM then
-        CommandRemotes.IM.OnClientEvent:Connect(function(message: string)
-                if typeof(message) == "string" and message ~= "" then
-                        showIM(message)
-                end
-        end)
+	CommandRemotes.IM.OnClientEvent:Connect(function(message: string, colorName: string?)
+		if typeof(message) == "string" and message ~= "" then
+			showIM(message, colorName)
+		end
+	end)
 end
 
 print("[CommandEffects] Ready.")
