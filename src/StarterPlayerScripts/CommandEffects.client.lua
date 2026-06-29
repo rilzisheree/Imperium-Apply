@@ -1,11 +1,12 @@
 --[[
-        CommandEffects.client.lua
-        LocalScript — StarterPlayerScripts
+	CommandEffects.client.lua
+	LocalScript — StarterPlayerScripts
 ]]
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
+local RunService        = game:GetService("RunService")
 local Lighting          = game:GetService("Lighting")
 
 local LocalPlayer = Players.LocalPlayer
@@ -14,32 +15,32 @@ local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 -- ── Colour map ─────────────────────────────────────────────────────────────────
 
 local COLOR_MAP = {
-        red    = Color3.fromRGB(255,  90,  90),
-        blue   = Color3.fromRGB(110, 160, 255),
-        green  = Color3.fromRGB( 90, 220,  90),
-        yellow = Color3.fromRGB(255, 230,  80),
-        orange = Color3.fromRGB(255, 160,  60),
-        purple = Color3.fromRGB(190, 110, 255),
-        pink   = Color3.fromRGB(255, 140, 210),
-        white  = Color3.fromRGB(255, 255, 255),
-        cyan   = Color3.fromRGB( 90, 225, 255),
-        lime   = Color3.fromRGB(140, 255,  90),
+	red    = Color3.fromRGB(255,  90,  90),
+	blue   = Color3.fromRGB(110, 160, 255),
+	green  = Color3.fromRGB( 90, 220,  90),
+	yellow = Color3.fromRGB(255, 230,  80),
+	orange = Color3.fromRGB(255, 160,  60),
+	purple = Color3.fromRGB(190, 110, 255),
+	pink   = Color3.fromRGB(255, 140, 210),
+	white  = Color3.fromRGB(255, 255, 255),
+	cyan   = Color3.fromRGB( 90, 225, 255),
+	lime   = Color3.fromRGB(140, 255,  90),
 }
 local DEFAULT_COLOR = Color3.fromRGB(255, 255, 255)
 
 local function resolveColor(name: string?): Color3
-        if name and COLOR_MAP[name:lower()] then
-                return COLOR_MAP[name:lower()]
-        end
-        return DEFAULT_COLOR
+	if name and COLOR_MAP[name:lower()] then
+		return COLOR_MAP[name:lower()]
+	end
+	return DEFAULT_COLOR
 end
 
 -- ── Tween helper ───────────────────────────────────────────────────────────────
 
 local function tw(target, time, props, style, dir)
-        style = style or Enum.EasingStyle.Quint
-        dir   = dir   or Enum.EasingDirection.Out
-        TweenService:Create(target, TweenInfo.new(time, style, dir), props):Play()
+	style = style or Enum.EasingStyle.Quint
+	dir   = dir   or Enum.EasingDirection.Out
+	TweenService:Create(target, TweenInfo.new(time, style, dir), props):Play()
 end
 
 -- ── Root ScreenGui ─────────────────────────────────────────────────────────────
@@ -120,186 +121,233 @@ imLabel.Parent                 = gui
 -- ── Hold time ──────────────────────────────────────────────────────────────────
 
 local function calcHold(text: string): number
-        local words = select(2, text:gsub("%S+", "")) + 1
-        return math.clamp(words * 0.45, 4, 10)
+	local words = select(2, text:gsub("%S+", "")) + 1
+	return math.clamp(words * 0.45, 4, 10)
 end
 
--- ── Colour VFX ─────────────────────────────────────────────────────────────────
--- Creates a coloured screen-edge glow + subtle tint that lasts `holdDuration`
--- seconds then fades out automatically. Only called when a colour is set.
+-- ── Breeze animation ───────────────────────────────────────────────────────────
+-- Gently oscillates a label around its base position using sine waves.
+-- Returns a stop() function that resets the label and disconnects the loop.
 --
--- allSides = true  → SM: glow on all 4 edges, stronger effect
--- allSides = false → IM: glow on left/right only, subtler effect
+-- opts:
+--   ampX, ampY  — pixel amplitude of the oscillation (default 0, 3)
+--   speedX, speedY — radians/sec for X and Y waves (default 0.7, 1.1)
+--   phaseX, phaseY — starting phase offset in radians
+
+local function startBreeze(label: TextLabel, opts: { [string]: number }?)
+	opts = opts or {}
+	local ampX   = opts.ampX   or 0
+	local ampY   = opts.ampY   or 3
+	local speedX = opts.speedX or 0.7
+	local speedY = opts.speedY or 1.1
+	local phaseX = opts.phaseX or 0
+	local phaseY = opts.phaseY or 0
+
+	local base = label.Position
+	local t    = 0
+
+	local conn = RunService.RenderStepped:Connect(function(dt)
+		t += dt
+		local ox = math.sin(t * speedX + phaseX) * ampX
+		local oy = math.sin(t * speedY + phaseY) * ampY
+		label.Position = UDim2.new(
+			base.X.Scale, base.X.Offset + ox,
+			base.Y.Scale, base.Y.Offset + oy
+		)
+	end)
+
+	return function()
+		conn:Disconnect()
+		label.Position = base
+	end
+end
+
+-- ── Screen-edge colour glow ────────────────────────────────────────────────────
+-- SM = all 4 edges + stronger tint. IM = left/right only + lighter tint.
 
 local function showColorVFX(color: Color3, holdDuration: number, allSides: boolean)
-        local FADE_IN  = 0.55
-        local FADE_OUT = 0.55
-        -- How opaque the glow frames get at peak (lower = more visible)
-        local peakTrans = allSides and 0.42 or 0.58
+	local FADE_IN  = 0.55
+	local FADE_OUT = 0.55
+	local peakTrans = allSides and 0.42 or 0.58
 
-        -- Vignette data: {size, position, gradientRotation}
-        local vigData = allSides and {
-                { UDim2.new(1, 0, 0.38, 0), UDim2.new(0,    0, 0,    0), 90  },  -- top
-                { UDim2.new(1, 0, 0.38, 0), UDim2.new(0,    0, 0.62, 0), 270 },  -- bottom
-                { UDim2.new(0.28, 0, 1, 0), UDim2.new(0,    0, 0,    0), 0   },  -- left
-                { UDim2.new(0.28, 0, 1, 0), UDim2.new(0.72, 0, 0,    0), 180 },  -- right
-        } or {
-                { UDim2.new(0.22, 0, 1, 0), UDim2.new(0,    0, 0,    0), 0   },  -- left
-                { UDim2.new(0.22, 0, 1, 0), UDim2.new(0.78, 0, 0,    0), 180 },  -- right
-        }
+	local vigData = allSides and {
+		{ UDim2.new(1, 0, 0.38, 0), UDim2.new(0,    0, 0,    0), 90  },
+		{ UDim2.new(1, 0, 0.38, 0), UDim2.new(0,    0, 0.62, 0), 270 },
+		{ UDim2.new(0.28, 0, 1, 0), UDim2.new(0,    0, 0,    0), 0   },
+		{ UDim2.new(0.28, 0, 1, 0), UDim2.new(0.72, 0, 0,    0), 180 },
+	} or {
+		{ UDim2.new(0.22, 0, 1, 0), UDim2.new(0,    0, 0,    0), 0   },
+		{ UDim2.new(0.22, 0, 1, 0), UDim2.new(0.78, 0, 0,    0), 180 },
+	}
 
-        local frames = {}
-        for _, data in vigData do
-                local f = Instance.new("Frame")
-                f.Size                   = data[1]
-                f.Position               = data[2]
-                f.BackgroundColor3       = color
-                f.BackgroundTransparency = 1
-                f.BorderSizePixel        = 0
-                f.ZIndex                 = 8
-                f.Parent                 = gui
+	local frames = {}
+	for _, data in vigData do
+		local f = Instance.new("Frame")
+		f.Size                   = data[1]
+		f.Position               = data[2]
+		f.BackgroundColor3       = color
+		f.BackgroundTransparency = 1
+		f.BorderSizePixel        = 0
+		f.ZIndex                 = 8
+		f.Parent                 = gui
 
-                local g = Instance.new("UIGradient")
-                g.Transparency = NumberSequence.new({
-                        NumberSequenceKeypoint.new(0,    0),
-                        NumberSequenceKeypoint.new(0.45, 0.55),
-                        NumberSequenceKeypoint.new(1,    1),
-                })
-                g.Rotation = data[3]
-                g.Parent   = f
+		local g = Instance.new("UIGradient")
+		g.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0,    0),
+			NumberSequenceKeypoint.new(0.45, 0.55),
+			NumberSequenceKeypoint.new(1,    1),
+		})
+		g.Rotation = data[3]
+		g.Parent   = f
 
-                table.insert(frames, f)
-                tw(f, FADE_IN, { BackgroundTransparency = peakTrans })
-        end
+		table.insert(frames, f)
+		tw(f, FADE_IN, { BackgroundTransparency = peakTrans })
+	end
 
-        -- Brief initial flash — quick dip to a brighter transparency then settle
-        task.delay(FADE_IN * 0.35, function()
-                for _, f in frames do
-                        tw(f, 0.12, { BackgroundTransparency = peakTrans - 0.12 },
-                                Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-                end
-                task.delay(0.14, function()
-                        for _, f in frames do
-                                tw(f, 0.25, { BackgroundTransparency = peakTrans },
-                                        Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-                        end
-                end)
-        end)
+	-- Brief initial flash pulse
+	task.delay(FADE_IN * 0.35, function()
+		for _, f in frames do
+			tw(f, 0.12, { BackgroundTransparency = peakTrans - 0.12 },
+				Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		end
+		task.delay(0.14, function()
+			for _, f in frames do
+				tw(f, 0.25, { BackgroundTransparency = peakTrans },
+					Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			end
+		end)
+	end)
 
-        -- Subtle color correction tint matching the color
-        local cc = Instance.new("ColorCorrectionEffect")
-        cc.TintColor = Color3.new(1, 1, 1)
-        cc.Brightness = 0
-        cc.Parent = Lighting
+	-- Subtle colour correction tint
+	local tintStrength = allSides and 0.12 or 0.06
+	local cc = Instance.new("ColorCorrectionEffect")
+	cc.TintColor = Color3.new(1, 1, 1)
+	cc.Parent = Lighting
+	tw(cc, FADE_IN, { TintColor = Color3.new(
+		1 - tintStrength + tintStrength * color.R,
+		1 - tintStrength + tintStrength * color.G,
+		1 - tintStrength + tintStrength * color.B
+	)})
 
-        local tintStrength = allSides and 0.12 or 0.06
-        local tintTarget = Color3.new(
-                1 - tintStrength + tintStrength * color.R,
-                1 - tintStrength + tintStrength * color.G,
-                1 - tintStrength + tintStrength * color.B
-        )
-        tw(cc, FADE_IN, { TintColor = tintTarget })
-
-        -- ── Fade out after hold ────────────────────────────────────────────────────
-
-        task.delay(FADE_IN + holdDuration, function()
-                for _, f in frames do
-                        tw(f, FADE_OUT, { BackgroundTransparency = 1 })
-                end
-                tw(cc, FADE_OUT, { TintColor = Color3.new(1, 1, 1) })
-                task.delay(FADE_OUT + 0.15, function()
-                        for _, f in frames do
-                                if f.Parent then f:Destroy() end
-                        end
-                        cc:Destroy()
-                end)
-        end)
+	task.delay(FADE_IN + holdDuration, function()
+		for _, f in frames do
+			tw(f, FADE_OUT, { BackgroundTransparency = 1 })
+		end
+		tw(cc, FADE_OUT, { TintColor = Color3.new(1, 1, 1) })
+		task.delay(FADE_OUT + 0.15, function()
+			for _, f in frames do if f.Parent then f:Destroy() end end
+			cc:Destroy()
+		end)
+	end)
 end
 
 -- ── SM queue ───────────────────────────────────────────────────────────────────
--- Each entry: { text: string, color: Color3, colorName: string? }
 
 local smQueue: { { text: string, color: Color3, colorName: string? } } = {}
 local smBusy = false
 
 local function processSmQueue()
-        if smBusy or #smQueue == 0 then return end
-        smBusy = true
+	if smBusy or #smQueue == 0 then return end
+	smBusy = true
 
-        local entry     = table.remove(smQueue, 1)
-        local text      = entry.text
-        local color     = entry.color
-        local colorName = entry.colorName
-        local hold      = calcHold(text)
+	local entry     = table.remove(smQueue, 1)
+	local text      = entry.text
+	local color     = entry.color
+	local colorName = entry.colorName
+	local hold      = calcHold(text)
 
-        smBody.Text               = text
-        smBody.TextColor3         = color
-        smHeader.TextColor3       = color
-        smHeader.TextTransparency = 1
-        smBody.TextTransparency   = 1
-        smHeader.Visible          = true
-        smBody.Visible            = true
-        blur.Size                 = 0
+	smBody.Text               = text
+	smBody.TextColor3         = color
+	smHeader.TextColor3       = color
+	smHeader.TextTransparency = 1
+	smBody.TextTransparency   = 1
+	smHeader.Visible          = true
+	smBody.Visible            = true
+	blur.Size                 = 0
 
-        tw(blur,     0.6, { Size = 5 })
-        tw(smHeader, 0.6, { TextTransparency = 0 })
-        tw(smBody,   0.6, { TextTransparency = 0 })
+	tw(blur,     0.6, { Size = 5 })
+	tw(smHeader, 0.6, { TextTransparency = 0 })
+	tw(smBody,   0.6, { TextTransparency = 0 })
 
-        -- VFX only when a colour was specified
-        if colorName then
-                showColorVFX(color, hold, true)
-        end
+	local stopHeader, stopBody
 
-        task.delay(0.6 + hold, function()
-                tw(blur,     0.5, { Size = 0 })
-                tw(smHeader, 0.5, { TextTransparency = 1 })
-                tw(smBody,   0.5, { TextTransparency = 1 })
-                task.delay(0.55, function()
-                        smHeader.Visible          = false
-                        smHeader.TextTransparency = 0
-                        smBody.Visible            = false
-                        smBody.TextTransparency   = 0
-                        blur.Size                 = 0
-                        smBusy = false
-                        processSmQueue()
-                end)
-        end)
+	if colorName then
+		showColorVFX(color, hold, true)
+
+		-- Header: gentle up/down drift
+		stopHeader = startBreeze(smHeader, {
+			ampY = 3, speedY = 0.9, phaseY = 0,
+			ampX = 1, speedX = 0.5, phaseX = 1.2,
+		})
+		-- Body: same direction but slightly different timing so they feel independent
+		stopBody = startBreeze(smBody, {
+			ampY = 2.5, speedY = 1.05, phaseY = 0.8,
+			ampX = 1,   speedX = 0.6,  phaseX = 0.4,
+		})
+	end
+
+	task.delay(0.6 + hold, function()
+		if stopHeader then stopHeader() end
+		if stopBody   then stopBody()   end
+
+		tw(blur,     0.5, { Size = 0 })
+		tw(smHeader, 0.5, { TextTransparency = 1 })
+		tw(smBody,   0.5, { TextTransparency = 1 })
+		task.delay(0.55, function()
+			smHeader.Visible          = false
+			smHeader.TextTransparency = 0
+			smBody.Visible            = false
+			smBody.TextTransparency   = 0
+			blur.Size                 = 0
+			smBusy = false
+			processSmQueue()
+		end)
+	end)
 end
 
 local function showSM(text: string, colorName: string?)
-        table.insert(smQueue, {
-                text      = text,
-                color     = resolveColor(colorName),
-                colorName = colorName,
-        })
-        processSmQueue()
+	table.insert(smQueue, {
+		text      = text,
+		color     = resolveColor(colorName),
+		colorName = colorName,
+	})
+	processSmQueue()
 end
 
 -- ── IM ─────────────────────────────────────────────────────────────────────────
 
 local function showIM(text: string, colorName: string?)
-        local color = resolveColor(colorName)
-        local hold  = calcHold(text)
+	local color = resolveColor(colorName)
+	local hold  = calcHold(text)
 
-        imLabel.Text             = text
-        imLabel.TextColor3       = color
-        imLabel.TextTransparency = 1
-        imLabel.Visible          = true
+	imLabel.Text             = text
+	imLabel.TextColor3       = color
+	imLabel.TextTransparency = 1
+	imLabel.Visible          = true
 
-        tw(imLabel, 0.6, { TextTransparency = 0 })
+	tw(imLabel, 0.6, { TextTransparency = 0 })
 
-        -- VFX only when a colour was specified
-        if colorName then
-                showColorVFX(color, hold, false)
-        end
+	local stopIM
 
-        task.delay(0.6 + hold, function()
-                tw(imLabel, 0.5, { TextTransparency = 1 })
-                task.delay(0.55, function()
-                        imLabel.Visible          = false
-                        imLabel.TextTransparency = 0
-                end)
-        end)
+	if colorName then
+		showColorVFX(color, hold, false)
+
+		-- IM: slow circular drift (X + Y) — feels like floating/swaying
+		stopIM = startBreeze(imLabel, {
+			ampX = 4,   speedX = 0.55, phaseX = 0,
+			ampY = 3,   speedY = 0.80, phaseY = math.pi / 2,
+		})
+	end
+
+	task.delay(0.6 + hold, function()
+		if stopIM then stopIM() end
+
+		tw(imLabel, 0.5, { TextTransparency = 1 })
+		task.delay(0.55, function()
+			imLabel.Visible          = false
+			imLabel.TextTransparency = 0
+		end)
+	end)
 end
 
 -- ── Remote listeners ───────────────────────────────────────────────────────────
@@ -307,19 +355,19 @@ end
 local CommandRemotes = require(ReplicatedStorage:WaitForChild("CommandRemotes"))
 
 if CommandRemotes.SM then
-        CommandRemotes.SM.OnClientEvent:Connect(function(message: string, colorName: string?)
-                if typeof(message) == "string" and message ~= "" then
-                        showSM(message, colorName)
-                end
-        end)
+	CommandRemotes.SM.OnClientEvent:Connect(function(message: string, colorName: string?)
+		if typeof(message) == "string" and message ~= "" then
+			showSM(message, colorName)
+		end
+	end)
 end
 
 if CommandRemotes.IM then
-        CommandRemotes.IM.OnClientEvent:Connect(function(message: string, colorName: string?)
-                if typeof(message) == "string" and message ~= "" then
-                        showIM(message, colorName)
-                end
-        end)
+	CommandRemotes.IM.OnClientEvent:Connect(function(message: string, colorName: string?)
+		if typeof(message) == "string" and message ~= "" then
+			showIM(message, colorName)
+		end
+	end)
 end
 
 print("[CommandEffects] Ready.")
