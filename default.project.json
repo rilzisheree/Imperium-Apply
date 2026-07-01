@@ -13,6 +13,13 @@
       "$path": "src/ServerScriptService"
     },
 
+    "TextChatService": {
+      "$className": "TextChatService",
+      "$properties": {
+        "ChatVersion": "LegacyChatService"
+      }
+    },
+
     "StarterPlayer": {
       "$className": "StarterPlayer",
       "StarterPlayerScripts": {
